@@ -1355,3 +1355,39 @@ input {
   color: #8aa1b4;
   font-size: 12px;
 }
+
+.edit-message-form {
+  display: grid;
+  gap: 8px;
+}
+
+.edit-message-input {
+  width: 100%;
+  min-width: 220px;
+  height: 38px;
+  border: 1px solid rgba(97, 168, 232, 0.55);
+  background: rgba(14, 22, 33, 0.75);
+  color: #f8fafc;
+  border-radius: 10px;
+  padding: 0 12px;
+  outline: none;
+  font-size: 15px;
+}
+
+.edit-message-input:focus {
+  border-color: #61a8e8;
+  box-shadow: 0 0 0 2px rgba(97, 168, 232, 0.25);
+}
+
+.edit-message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edited-label {
+  margin-left: 8px;
+  color: #b7c7d8;
+  font-size: 12px;
+  font-style: italic;
+}

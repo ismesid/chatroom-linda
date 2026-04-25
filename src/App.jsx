@@ -41,6 +41,9 @@ function App() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
 
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState("");
+
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
 
@@ -519,6 +522,8 @@ function App() {
     await signOut(auth);
     setMessage("");
     setMessages([]);
+    setEditingMessageId(null);
+    setEditingText("");
     setIsMenuOpen(false);
     setActivePanel(null);
   };
@@ -526,6 +531,8 @@ function App() {
   const handleSelectRoom = (roomId) => {
     setSelectedRoomId(roomId);
     setMessage("");
+    setEditingMessageId(null);
+    setEditingText("");
     setIsMobileChatOpen(true);
   };
 
@@ -572,6 +579,67 @@ function App() {
     }
   };
 
+  const handleStartEditMessage = (msg) => {
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    if (msg.uid !== user.uid) {
+      alert("You can only edit your own messages.");
+      return;
+    }
+
+    setEditingMessageId(msg.id);
+    setEditingText(msg.text || "");
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditingText("");
+  };
+
+  const handleSaveEditMessage = async (e, msg) => {
+    e.preventDefault();
+
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    if (msg.uid !== user.uid) {
+      alert("You can only edit your own messages.");
+      return;
+    }
+
+    const trimmedText = editingText.trim();
+
+    if (!trimmedText) {
+      alert("Message cannot be empty.");
+      return;
+    }
+
+    if (trimmedText === msg.text) {
+      handleCancelEditMessage();
+      return;
+    }
+
+    const path = `roomMessages/${selectedRoomId}/${msg.id}`;
+
+    try {
+      await update(ref(database, path), {
+        text: trimmedText,
+        edited: true,
+        editedAt: serverTimestamp(),
+      });
+
+      handleCancelEditMessage();
+    } catch (error) {
+      console.error("Edit message failed:", error);
+      alert("Edit failed: " + error.message);
+    }
+  };
+
   const handleDeleteMessage = async (msg) => {
     if (!user) {
       alert("Please login first.");
@@ -593,6 +661,10 @@ function App() {
 
     try {
       await remove(ref(database, path));
+
+      if (editingMessageId === msg.id) {
+        handleCancelEditMessage();
+      }
     } catch (error) {
       console.error("Delete message failed:", error);
       alert("Delete failed: " + error.message);
@@ -1445,17 +1517,58 @@ function App() {
                       )}
 
                       {msg.uid === user.uid && (
-                        <button
-                          className="mini-action-button"
-                          onClick={() => handleDeleteMessage(msg)}
-                        >
-                          Delete
-                        </button>
+                        <>
+                          <button
+                            className="mini-action-button"
+                            onClick={() => handleStartEditMessage(msg)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            className="mini-action-button"
+                            onClick={() => handleDeleteMessage(msg)}
+                          >
+                            Delete
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
 
-                  <p className="message-text">{msg.text}</p>
+                  {editingMessageId === msg.id ? (
+                    <form
+                      className="edit-message-form"
+                      onSubmit={(e) => handleSaveEditMessage(e, msg)}
+                    >
+                      <input
+                        className="edit-message-input"
+                        type="text"
+                        value={editingText}
+                        autoFocus
+                        onChange={(e) => setEditingText(e.target.value)}
+                      />
+
+                      <div className="edit-message-actions">
+                        <button type="submit" className="mini-action-button">
+                          Save
+                        </button>
+
+                        <button
+                          type="button"
+                          className="mini-action-button"
+                          onClick={handleCancelEditMessage}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <p className="message-text">
+                      {msg.text}
+                      {msg.edited && <span className="edited-label"> edited</span>}
+                    </p>
+                  )}
                 </div>
               </div>
             ))
