@@ -1205,6 +1205,23 @@ function App() {
     return name[0].toUpperCase();
   };
 
+  const looksLikeCode = (text = "") => {
+    const value = String(text);
+
+    return (
+      /<\/?[a-zA-Z][\s\S]*?>/.test(value) ||
+      value.includes("{") ||
+      value.includes("}") ||
+      value.includes(";") ||
+      value.includes("=>") ||
+      value.includes("function ") ||
+      value.includes("const ") ||
+      value.includes("let ") ||
+      value.includes("import ") ||
+      value.includes("return ")
+    );
+  };
+
   if (!user) {
     return (
       <div className="app auth-page">
@@ -1851,6 +1868,11 @@ function App() {
                     <p className="system-message-text">
                       {msg.text}
                     </p>
+                  ) : looksLikeCode(msg.text) ? (
+                    <pre className="message-code">
+                      <code>{msg.text}</code>
+                      {msg.edited && <span className="edited-label"> edited</span>}
+                    </pre>
                   ) : (
                     <p className="message-text">
                       {msg.text}

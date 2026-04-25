@@ -1555,3 +1555,23 @@ input {
   line-height: 1.5;
   font-style: italic;
 }
+
+.message-code {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  padding: 12px;
+  color: #e5e7eb;
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.message-code code {
+  font-family: inherit;
+}
