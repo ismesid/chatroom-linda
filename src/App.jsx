@@ -79,6 +79,7 @@ function App() {
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const messageRefs = useRef({});
+  const imageInputRef = useRef(null);
 
   const ensureDefaultRoomForUser = async (currentUser) => {
     if (!currentUser) return;
@@ -361,6 +362,7 @@ function App() {
 
   const messageSearchResults = normalizedMessageSearchText
     ? visibleMessages.filter((msg) =>
+        msg.type !== "image" &&
         String(msg.text || "").toLowerCase().includes(normalizedMessageSearchText)
       )
     : [];
@@ -485,8 +487,14 @@ function App() {
     });
   }, [activeSearchMessageId]);
 
-  const lastMessageText = visibleMessages.length
-    ? visibleMessages[visibleMessages.length - 1].text
+  const lastMessage = visibleMessages[visibleMessages.length - 1];
+
+  const lastMessageText = lastMessage
+    ? lastMessage.type === "image"
+      ? "[Image]"
+      : lastMessage.type === "system"
+        ? lastMessage.text
+        : lastMessage.text || "No messages yet"
     : "No messages yet";
 
   const roomMembers = selectedRoom?.members
@@ -655,6 +663,106 @@ function App() {
       console.error("Send message failed:", error);
       alert("Send failed: " + error.message);
     }
+  };
+
+  const handleSendImageMessage = async (e) => {
+    const file = e.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!user) {
+      alert("Please login first.");
+      e.target.value = "";
+      return;
+    }
+
+    if (!selectedRoom || !selectedRoom.members?.[user.uid]) {
+      alert("You are not a member of this chatroom.");
+      e.target.value = "";
+      return;
+    }
+
+    if (isTwoPersonBlockedRoom) {
+      alert("You can no longer chat with this user.");
+      e.target.value = "";
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 800 * 1024) {
+      alert("Image is too large. Please choose an image smaller than 800KB.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = async () => {
+      try {
+        const imageURL = reader.result;
+        const messagesRef = ref(database, `roomMessages/${selectedRoomId}`);
+
+        await push(messagesRef, {
+          username: userProfile?.username || user.displayName || user.email,
+          uid: user.uid,
+          type: "image",
+          imageURL,
+          text: "",
+          roomId: selectedRoomId,
+          createdAt: serverTimestamp(),
+        });
+
+        const snapshot = await get(messagesRef);
+        const data = snapshot.val() || {};
+
+        const myImageMessages = Object.entries(data)
+          .map(([id, value]) => ({
+            id,
+            ...value,
+          }))
+          .filter((msg) => msg.uid === user.uid && msg.type === "image")
+          .sort((a, b) => {
+            const timeA = typeof a.createdAt === "number" ? a.createdAt : 0;
+            const timeB = typeof b.createdAt === "number" ? b.createdAt : 0;
+            return timeA - timeB;
+          });
+
+        const extraCount = myImageMessages.length - 5;
+
+        if (extraCount > 0) {
+          const oldImages = myImageMessages.slice(0, extraCount);
+
+          const deleteUpdates = {};
+
+          oldImages.forEach((oldImage) => {
+            deleteUpdates[`roomMessages/${selectedRoomId}/${oldImage.id}`] = {
+              username: oldImage.username || userProfile?.username || user.displayName || user.email,
+              uid: oldImage.uid,
+              type: "system",
+              text: "Image removed because the image limit was exceeded.",
+              roomId: selectedRoomId,
+              createdAt: oldImage.createdAt || Date.now(),
+            };
+          });
+
+          await update(ref(database), deleteUpdates);
+        }
+      } catch (error) {
+        console.error("Send image failed:", error);
+        alert("Send image failed: " + error.message);
+      } finally {
+        e.target.value = "";
+      }
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const handleStartEditMessage = (msg) => {
@@ -1518,7 +1626,6 @@ function App() {
                 <div className="room-info">
                   <div className="room-title-row">
                     <h3>{room.name}</h3>
-                    <span>{room.id === rooms[0]?.id ? "04:49" : ""}</span>
                   </div>
 
                   <p>
@@ -1685,14 +1792,16 @@ function App() {
                         </button>
                       )}
 
-                      {msg.uid === user.uid && (
+                      {msg.uid === user.uid && msg.type !== "system" && (
                         <>
-                          <button
-                            className="mini-action-button"
-                            onClick={() => handleStartEditMessage(msg)}
-                          >
-                            Edit
-                          </button>
+                          {msg.type !== "image" && (
+                            <button
+                              className="mini-action-button"
+                              onClick={() => handleStartEditMessage(msg)}
+                            >
+                              Edit
+                            </button>
+                          )}
 
                           <button
                             className="mini-action-button"
@@ -1732,6 +1841,16 @@ function App() {
                         </button>
                       </div>
                     </form>
+                  ) : msg.type === "image" ? (
+                    <img
+                      className="message-image"
+                      src={msg.imageURL}
+                      alt="Sent"
+                    />
+                  ) : msg.type === "system" ? (
+                    <p className="system-message-text">
+                      {msg.text}
+                    </p>
                   ) : (
                     <p className="message-text">
                       {msg.text}
@@ -1754,9 +1873,22 @@ function App() {
         </section>
 
         <form className="message-form" onSubmit={handleSendMessage}>
-          <button className="attach-button" type="button">
+          <button
+            className="attach-button"
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={isTwoPersonBlockedRoom}
+          >
             📎
           </button>
+
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="image-file-input"
+            onChange={handleSendImageMessage}
+          />
 
           <input
             type="text"

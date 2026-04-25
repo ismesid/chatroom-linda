@@ -1528,3 +1528,30 @@ input {
     font-size: 15px;
   }
 }
+
+.image-file-input {
+  display: none;
+}
+
+.message-image {
+  display: block;
+  width: min(320px, 70vw);
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.attach-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.system-message-text {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  font-style: italic;
+}
