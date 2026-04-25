@@ -44,6 +44,10 @@ function App() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState("");
 
+  const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+  const [messageSearchText, setMessageSearchText] = useState("");
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
 
@@ -73,6 +77,7 @@ function App() {
 
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
+  const messageRefs = useRef({});
 
   const ensureDefaultRoomForUser = async (currentUser) => {
     if (!currentUser) return;
@@ -340,6 +345,19 @@ function App() {
     return !isBlockedBetween(user.uid, msg.uid);
   });
 
+  const normalizedMessageSearchText = messageSearchText.trim().toLowerCase();
+
+  const messageSearchResults = normalizedMessageSearchText
+    ? visibleMessages.filter((msg) =>
+        String(msg.text || "").toLowerCase().includes(normalizedMessageSearchText)
+      )
+    : [];
+
+  const activeSearchMessageId =
+    messageSearchResults.length > 0
+      ? messageSearchResults[activeSearchIndex]?.id
+      : null;
+
   useEffect(() => {
     if (!user) {
       setUserProfiles({});
@@ -384,6 +402,7 @@ function App() {
 
   useLayoutEffect(() => {
     if (!selectedRoomId) return;
+    if (messageSearchText.trim()) return;
 
     let frameId;
     let frameCount = 0;
@@ -440,6 +459,19 @@ function App() {
     visibleMessages.length,
     visibleMessages[visibleMessages.length - 1]?.id,
   ]);
+
+  useEffect(() => {
+    if (!activeSearchMessageId) return;
+
+    const targetElement = messageRefs.current[activeSearchMessageId];
+
+    if (!targetElement) return;
+
+    targetElement.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [activeSearchMessageId]);
 
   const lastMessageText = visibleMessages.length
     ? visibleMessages[visibleMessages.length - 1].text
@@ -533,7 +565,41 @@ function App() {
     setMessage("");
     setEditingMessageId(null);
     setEditingText("");
+    setIsMessageSearchOpen(false);
+    setMessageSearchText("");
+    setActiveSearchIndex(0);
     setIsMobileChatOpen(true);
+  };
+
+  const handleOpenMessageSearch = () => {
+    setIsMessageSearchOpen(true);
+  };
+
+  const handleCloseMessageSearch = () => {
+    setIsMessageSearchOpen(false);
+    setMessageSearchText("");
+    setActiveSearchIndex(0);
+  };
+
+  const handleMessageSearchChange = (e) => {
+    setMessageSearchText(e.target.value);
+    setActiveSearchIndex(0);
+  };
+
+  const handleNextSearchResult = () => {
+    if (messageSearchResults.length === 0) return;
+
+    setActiveSearchIndex((prevIndex) =>
+      prevIndex + 1 >= messageSearchResults.length ? 0 : prevIndex + 1
+    );
+  };
+
+  const handlePrevSearchResult = () => {
+    if (messageSearchResults.length === 0) return;
+
+    setActiveSearchIndex((prevIndex) =>
+      prevIndex - 1 < 0 ? messageSearchResults.length - 1 : prevIndex - 1
+    );
   };
 
   const handleSendMessage = async (e) => {
@@ -1455,7 +1521,64 @@ function App() {
           </div>
 
           <div className="chat-header-actions">
-            <button className="icon-button">⌕</button>
+            {isMessageSearchOpen ? (
+              <div className="message-search-bar">
+                <input
+                  type="text"
+                  placeholder="Search messages"
+                  value={messageSearchText}
+                  autoFocus
+                  onChange={handleMessageSearchChange}
+                />
+
+                <span className="message-search-count">
+                  {messageSearchText
+                    ? `${messageSearchResults.length > 0 ? activeSearchIndex + 1 : 0}/${
+                        messageSearchResults.length
+                      }`
+                    : "0/0"}
+                </span>
+
+                <button
+                  type="button"
+                  className="message-search-button"
+                  onClick={handlePrevSearchResult}
+                  disabled={messageSearchResults.length === 0}
+                  title="Previous result"
+                >
+                  ↑
+                </button>
+
+                <button
+                  type="button"
+                  className="message-search-button"
+                  onClick={handleNextSearchResult}
+                  disabled={messageSearchResults.length === 0}
+                  title="Next result"
+                >
+                  ↓
+                </button>
+
+                <button
+                  type="button"
+                  className="message-search-button"
+                  onClick={handleCloseMessageSearch}
+                  title="Close search"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <button
+                className="icon-button"
+                type="button"
+                onClick={handleOpenMessageSearch}
+                title="Search messages"
+              >
+                ⌕
+              </button>
+            )}
+
             <button
               className="icon-button"
               type="button"
@@ -1480,11 +1603,22 @@ function App() {
           ) : (
             visibleMessages.map((msg) => (
               <div
-                className={`message-row ${
-                  msg.uid === user.uid ? "my-message-row" : ""
-                }`}
-                key={msg.id}
-              >
+                  ref={(element) => {
+                    if (element) {
+                      messageRefs.current[msg.id] = element;
+                    }
+                  }}
+                  className={`message-row ${
+                    msg.uid === user.uid ? "my-message-row" : ""
+                  } ${
+                    messageSearchResults.some((result) => result.id === msg.id)
+                      ? "search-matched-message-row"
+                      : ""
+                  } ${
+                    activeSearchMessageId === msg.id ? "active-search-message-row" : ""
+                  }`}
+                  key={msg.id}
+                >
                 <div className="message-avatar">
                   {userProfiles[msg.uid]?.photoURL ? (
                     <img

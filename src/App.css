@@ -1391,3 +1391,95 @@ input {
   font-size: 12px;
   font-style: italic;
 }
+
+.message-search-bar {
+  width: min(520px, 52vw);
+  height: 44px;
+  border-radius: 999px;
+  background: #242f3d;
+  border: 1px solid #2f4052;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 16px;
+}
+
+.message-search-bar input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #f8fafc;
+  font-size: 15px;
+}
+
+.message-search-bar input::placeholder {
+  color: #7f91a4;
+}
+
+.message-search-count {
+  color: #cbd5e1;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.message-search-button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 18px;
+  display: grid;
+  place-items: center;
+}
+
+.message-search-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.message-search-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.search-matched-message-row .message-card {
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.35),
+    0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.active-search-message-row .message-card {
+  box-shadow:
+    0 0 0 3px rgba(250, 204, 21, 0.95),
+    0 0 24px rgba(250, 204, 21, 0.28),
+    0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+@media (max-width: 720px) {
+  .message-search-bar {
+    width: min(270px, 62vw);
+    height: 40px;
+    padding: 0 6px 0 12px;
+    gap: 4px;
+  }
+
+  .message-search-bar input {
+    font-size: 13px;
+  }
+
+  .message-search-count {
+    font-size: 12px;
+  }
+
+  .message-search-button {
+    width: 24px;
+    height: 24px;
+    font-size: 15px;
+  }
+}
