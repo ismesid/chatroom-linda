@@ -469,8 +469,6 @@ function App() {
     selectedRoomId,
     selectedRoom?.id,
     isMobileChatOpen,
-    messages.length,
-    visibleMessages.length,
     visibleMessages[visibleMessages.length - 1]?.id,
   ]);
 
