@@ -52,6 +52,7 @@ input {
   margin: 0;
   font-size: 30px;
   text-align: center;
+  color: #f8fafc;
 }
 
 .auth-subtitle {
@@ -147,7 +148,7 @@ input {
   background: #e5e7eb;
 }
 
-/* Main Telegram Layout */
+/* Main Layout */
 
 .chat-shell {
   width: 100%;
@@ -336,6 +337,7 @@ input {
 .chat-header-left h1 {
   margin: 0;
   font-size: 23px;
+  color: #f8fafc;
 }
 
 .chat-header-left p {
@@ -393,6 +395,26 @@ input {
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(138, 161, 180, 0.25) transparent;
+}
+
+.message-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-list::-webkit-scrollbar-thumb {
+  background: rgba(138, 161, 180, 0.25);
+  border-radius: 999px;
+}
+
+.message-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(138, 161, 180, 0.45);
 }
 
 .empty-message {
@@ -564,6 +586,7 @@ input {
   display: flex;
   align-items: center;
   gap: 16px;
+  color: #f8fafc;
 }
 
 .profile-avatar {
@@ -575,6 +598,7 @@ input {
 .side-menu-profile h2 {
   margin: 0;
   font-size: 22px;
+  color: #f8fafc;
 }
 
 .side-menu-profile p {
@@ -623,6 +647,7 @@ input {
 .drawer-panel h3 {
   margin: 0 0 16px;
   font-size: 20px;
+  color: #f8fafc;
 }
 
 .panel-label {
@@ -756,10 +781,6 @@ input {
     padding: 0 10px;
   }
 
-  .chat-header-left {
-    gap: 8px;
-  }
-
   .header-avatar {
     width: 44px;
     height: 44px;
@@ -767,11 +788,10 @@ input {
   }
 
   .chat-header-left h1 {
-    font-size: 19px;
-  }
-
-  .chat-header-left p {
-    font-size: 13px;
+    margin: 0;
+    font-size: 23px;
+    color: #f8fafc;
+    gap: 8px;
   }
 
   .chat-header-actions {

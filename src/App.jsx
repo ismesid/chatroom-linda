@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ref,
   push,
@@ -52,6 +52,8 @@ function App() {
 
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+
+  const messageListRef = useRef(null);
 
   const selectedRoom = useMemo(() => {
     return rooms.find((room) => room.id === selectedRoomId) || null;
@@ -181,6 +183,16 @@ function App() {
   const visibleMessages = messages.filter((msg) => {
     return !blockedUsers.some((blocked) => blocked.uid === msg.uid);
   });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (messageListRef.current) {
+        messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [visibleMessages.length, selectedRoomId]);
 
   const lastMessageText = visibleMessages.length
     ? visibleMessages[visibleMessages.length - 1].text
@@ -627,7 +639,7 @@ function App() {
           </div>
         </div>
 
-        <section className="message-list">
+        <section className="message-list" ref={messageListRef}>
           {visibleMessages.length === 0 ? (
             <p className="empty-message">No messages yet. Start the conversation!</p>
           ) : (
