@@ -1,8 +1,9 @@
 // src/App.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ref,
   push,
+  set,
   remove,
   onValue,
   serverTimestamp,
@@ -68,6 +69,58 @@ function App() {
   const [inviteEmail, setInviteEmail] = useState("");
 
   const messageListRef = useRef(null);
+  const messageEndRef = useRef(null);
+
+  const ensureDefaultRoomForUser = async (currentUser) => {
+    if (!currentUser) return;
+
+    const defaultUsername = currentUser.displayName || currentUser.email || "";
+    const userRef = ref(database, `users/${currentUser.uid}`);
+    const userSnapshot = await get(userRef);
+    const existingProfile = userSnapshot.val();
+
+    const latestPhotoURL =
+      existingProfile?.photoURL || currentUser.photoURL || "";
+
+    const latestUsername =
+      existingProfile?.username || defaultUsername || "";
+
+    // 1. 先寫入使用者資料
+    await update(ref(database), {
+      [`users/${currentUser.uid}/email`]:
+        existingProfile?.email || currentUser.email || "",
+      [`users/${currentUser.uid}/username`]:
+        existingProfile?.username || defaultUsername || "",
+      [`users/${currentUser.uid}/photoURL`]: latestPhotoURL,
+      [`users/${currentUser.uid}/phone`]: existingProfile?.phone || "",
+      [`users/${currentUser.uid}/address`]: existingProfile?.address || "",
+      [`users/${currentUser.uid}/updatedAt`]: serverTimestamp(),
+
+      [`publicProfiles/${currentUser.uid}/photoURL`]: latestPhotoURL,
+      [`publicProfiles/${currentUser.uid}/username`]: latestUsername,
+      [`publicProfiles/${currentUser.uid}/email`]:
+        existingProfile?.email || currentUser.email || "",
+    });
+
+    // 2. 重點：不要先讀 rooms/main
+    // 新帳號還不是 member，不能 read rooms/main
+    // 直接把自己寫進 rooms/main/members
+    await update(ref(database), {
+      [`rooms/${DEFAULT_ROOM_ID}/members/${currentUser.uid}`]: true,
+    });
+
+    // 3. 加進自己的聊天室列表
+    await update(ref(database), {
+      [`userRooms/${currentUser.uid}/${DEFAULT_ROOM_ID}`]: true,
+    });
+
+    // 4. 這時候已經是 member 了，才補 ALL 的基本資料
+    await update(ref(database), {
+      [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
+      [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,
+      [`rooms/${DEFAULT_ROOM_ID}/avatar`]: DEFAULT_ROOM.avatar,
+    });
+  };
 
   const selectedRoom = useMemo(() => {
     return rooms.find((room) => room.id === selectedRoomId) || null;
@@ -83,6 +136,8 @@ function App() {
         setSelectedRoomId("");
         return;
       }
+
+      await ensureDefaultRoomForUser(currentUser);
 
       const defaultUsername = currentUser.displayName || currentUser.email;
       const userRef = ref(database, `users/${currentUser.uid}`);
@@ -106,12 +161,7 @@ function App() {
         [`publicProfiles/${currentUser.uid}/username`]: latestUsername,
         [`publicProfiles/${currentUser.uid}/email`]: existingProfile?.email || currentUser.email || "",
 
-        [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
-        [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,
-        [`rooms/${DEFAULT_ROOM_ID}/avatar`]: DEFAULT_ROOM.avatar,
-        [`rooms/${DEFAULT_ROOM_ID}/members/${currentUser.uid}`]: true,
-
-        [`userRooms/${currentUser.uid}/${DEFAULT_ROOM_ID}`]: true,
+        
       };
 
       await update(ref(database), updates);
@@ -129,47 +179,41 @@ function App() {
 
     const userRoomsRef = ref(database, `userRooms/${user.uid}`);
 
-    const unsubscribeUserRooms = onValue(userRoomsRef, (snapshot) => {
+    const unsubscribeUserRooms = onValue(userRoomsRef, async (snapshot) => {
       const data = snapshot.val();
 
       if (!data) {
-        setRooms([]);
-        setSelectedRoomId("");
+        await ensureDefaultRoomForUser(user);
         return;
       }
 
       const roomIds = Object.keys(data);
+      const loadedRooms = [];
 
-      roomIds.forEach((roomId) => {
-        const roomRef = ref(database, `rooms/${roomId}`);
+      for (const roomId of roomIds) {
+        const roomSnapshot = await get(ref(database, `rooms/${roomId}`));
+        const roomData = roomSnapshot.val();
 
-        onValue(roomRef, (roomSnapshot) => {
-          const roomData = roomSnapshot.val();
+        if (!roomData) continue;
 
-          if (!roomData) return;
-
-          setRooms((prevRooms) => {
-            const nextRoom = {
-              id: roomId,
-              name: roomData.name,
-              description: roomData.description || "Group chat",
-              avatar: roomData.avatar || roomData.name?.[0]?.toUpperCase() || "?",
-              createdBy: roomData.createdBy || "",
-              members: roomData.members || {},
-            };
-
-            const exists = prevRooms.some((room) => room.id === roomId);
-
-            if (exists) {
-              return prevRooms.map((room) =>
-                room.id === roomId ? nextRoom : room
-              );
-            }
-
-            return [...prevRooms, nextRoom];
-          });
+        loadedRooms.push({
+          id: roomId,
+          name: roomData.name,
+          description: roomData.description || "Group chat",
+          avatar: roomData.avatar || roomData.name?.[0]?.toUpperCase() || "?",
+          createdBy: roomData.createdBy || "",
+          members: roomData.members || {},
         });
-      });
+      }
+
+      setRooms(loadedRooms);
+
+      if (!selectedRoomId && loadedRooms.length > 0) {
+        const defaultRoom =
+          loadedRooms.find((room) => room.id === DEFAULT_ROOM_ID) || loadedRooms[0];
+
+        setSelectedRoomId(defaultRoom.id);
+      }
     });
 
     return () => unsubscribeUserRooms();
@@ -210,30 +254,69 @@ function App() {
     }
   }, [rooms, selectedRoomId]);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!user || !selectedRoomId) {
-      setMessages([]);
       return;
     }
 
-    const path = `roomMessages/${selectedRoomId}`;
+    const selectedRoomRef = ref(database, `rooms/${selectedRoomId}`);
 
-    const messagesRef = query(ref(database, path), orderByChild("createdAt"));
+    const unsubscribeSelectedRoom = onValue(selectedRoomRef, (snapshot) => {
+      const roomData = snapshot.val();
 
-    const unsubscribeMessages = onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
+      if (!roomData) {
+        return;
+      }
 
-      if (data) {
-        const messageList = Object.entries(data).map(([id, value]) => ({
-          id,
-          ...value,
-        }));
+      const updatedRoom = {
+        id: selectedRoomId,
+        name: roomData.name,
+        description: roomData.description || "Group chat",
+        avatar: roomData.avatar || roomData.name?.[0]?.toUpperCase() || "?",
+        createdBy: roomData.createdBy || "",
+        members: roomData.members || {},
+      };
+
+      setRooms((prevRooms) => {
+        const roomExists = prevRooms.some((room) => room.id === selectedRoomId);
+
+        if (!roomExists) {
+          return prevRooms;
+        }
+
+        return prevRooms.map((room) =>
+          room.id === selectedRoomId ? updatedRoom : room
+        );
+      });
+    });
+
+    return () => unsubscribeSelectedRoom();
+  }, [user, selectedRoomId]);
+
+  useEffect(() => {
+  if (!user || !selectedRoomId) {
+    setMessages([]);
+    return;
+  }
+
+  const path = `roomMessages/${selectedRoomId}`;
+
+  const messagesRef = query(ref(database, path), orderByChild("createdAt"));
+
+  const unsubscribeMessages = onValue(messagesRef, (snapshot) => {
+    const data = snapshot.val();
+
+    if (data) {
+      const messageList = Object.entries(data).map(([id, value]) => ({
+        id,
+        ...value,
+      }));
 
         setMessages(messageList);
       } else {
         setMessages([]);
-      }
-    });
+    }
+  });
 
     return () => unsubscribeMessages();
   }, [user, selectedRoomId]);
@@ -296,15 +379,64 @@ function App() {
     setRenameRoomName(selectedRoom?.name || "");
   }, [selectedRoom?.id, selectedRoom?.name]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (messageListRef.current) {
-        messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
-      }
-    }, 50);
+  useLayoutEffect(() => {
+    if (!selectedRoomId) return;
 
-    return () => clearTimeout(timer);
-  }, [visibleMessages.length, selectedRoomId]);
+    let frameId;
+    let frameCount = 0;
+
+    const scrollToBottom = () => {
+      const messageList = messageListRef.current;
+
+      if (!messageList) return;
+
+      // 直接用一個很大的值，避免 scrollHeight 當下還沒完全更新
+      messageList.scrollTop = 999999999;
+
+      messageList.scrollTo({
+        top: 999999999,
+        behavior: "auto",
+      });
+
+      messageEndRef.current?.scrollIntoView({
+        behavior: "auto",
+        block: "end",
+      });
+    };
+
+    const keepScrolling = () => {
+      scrollToBottom();
+      frameCount += 1;
+
+      // 連續多幀強制滑到底，處理登入後 ALL 訊息還在載入的情況
+      if (frameCount < 20) {
+        frameId = requestAnimationFrame(keepScrolling);
+      }
+    };
+
+    frameId = requestAnimationFrame(keepScrolling);
+
+    const timer1 = setTimeout(scrollToBottom, 100);
+    const timer2 = setTimeout(scrollToBottom, 300);
+    const timer3 = setTimeout(scrollToBottom, 700);
+    const timer4 = setTimeout(scrollToBottom, 1200);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      clearTimeout(timer4);
+    };
+  }, [
+    user?.uid,
+    selectedRoomId,
+    selectedRoom?.id,
+    isMobileChatOpen,
+    messages.length,
+    visibleMessages.length,
+    visibleMessages[visibleMessages.length - 1]?.id,
+  ]);
 
   const lastMessageText = visibleMessages.length
     ? visibleMessages[visibleMessages.length - 1].text
@@ -341,10 +473,21 @@ function App() {
     }
 
     try {
+      let result;
+
       if (authMode === "register") {
-        await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+        result = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+
+        // 新建帳號時，立刻建立個人資料並加入 ALL
+        await ensureDefaultRoomForUser(result.user);
+
+        // 註冊後直接選到 ALL
+        setSelectedRoomId(DEFAULT_ROOM_ID);
       } else {
-        await signInWithEmailAndPassword(auth, trimmedEmail, password);
+        result = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+
+        // 舊帳號登入時也補一次，避免以前註冊的帳號沒被加到 ALL
+        await ensureDefaultRoomForUser(result.user);
       }
 
       setEmail("");
@@ -360,7 +503,9 @@ function App() {
 
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+
+      await ensureDefaultRoomForUser(result.user);
 
       setEmail("");
       setPassword("");
@@ -1321,6 +1466,8 @@ function App() {
               You can no longer chat with this user.
             </div>
           )}
+
+          <div ref={messageEndRef} />
 
         </section>
 
