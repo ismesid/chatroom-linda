@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ref,
   push,
+  remove,
   onValue,
   serverTimestamp,
   query,
@@ -126,6 +127,31 @@ function App() {
     }
   };
 
+  const handleDeleteMessage = async (msg) => {
+  if (!user) {
+    alert("Please login first.");
+    return;
+  }
+
+  if (msg.uid !== user.uid) {
+    alert("You can only delete your own messages.");
+    return;
+  }
+
+  const confirmDelete = window.confirm("Delete this message?");
+
+  if (!confirmDelete) {
+    return;
+  }
+
+  try {
+    await remove(ref(database, `messages/${msg.id}`));
+  } catch (error) {
+    console.error("Delete message failed:", error);
+    alert("Delete failed: " + error.message);
+  }
+};
+
   if (!user) {
     return (
       <div className="app">
@@ -199,7 +225,18 @@ function App() {
               >
                 <div className="message-top">
                   <span className="message-user">{msg.username}</span>
+
+                  {msg.uid === user.uid && (
+                    <button
+                      className="delete-message-button"
+                      type="button"
+                      onClick={() => handleDeleteMessage(msg)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
+
                 <p className="message-text">{msg.text}</p>
               </div>
             ))

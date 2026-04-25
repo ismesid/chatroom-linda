@@ -177,6 +177,24 @@ body {
 
 .message-top {
   margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.delete-message-button {
+  border: none;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #dbeafe;
+  font-size: 12px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.delete-message-button:hover {
+  background: rgba(15, 23, 42, 0.9);
 }
 
 .message-user {
