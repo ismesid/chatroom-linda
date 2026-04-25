@@ -32,3 +32,4 @@ ui-debug.log
 # Environment variables
 .env
 .env.local
+functions/.env

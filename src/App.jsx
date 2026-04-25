@@ -25,6 +25,60 @@ import "./App.css";
 
 const DEFAULT_ROOM_ID = "main";
 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+const generateGeminiWelcomeMessage = async (username) => {
+  if (!GEMINI_API_KEY) {
+    return `Welcome ${username || "new user"}! Glad to have you here.`;
+  }
+
+  try {
+    const prompt = `
+You are a friendly chatbot inside a class chatroom app.
+A new user named "${username || "new user"}" just joined the ALL chatroom.
+Write one short welcome message in English.
+Keep it under 25 words.
+Do not mention that you are Gemini.
+`;
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Gemini API request failed");
+    }
+
+    const data = await response.json();
+
+    return (
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
+      `Welcome ${username || "new user"}! Glad to have you here.`
+    );
+  } catch (error) {
+    console.error("Gemini welcome message failed:", error);
+    return `Welcome ${username || "new user"}! Glad to have you here.`;
+  }
+};
+
 const DEFAULT_ROOM = {
   id: DEFAULT_ROOM_ID,
   name: "ALL",
@@ -85,51 +139,59 @@ function App() {
     if (!currentUser) return;
 
     const defaultUsername = currentUser.displayName || currentUser.email || "";
-    const userRef = ref(database, `users/${currentUser.uid}`);
-    const userSnapshot = await get(userRef);
-    const existingProfile = userSnapshot.val();
+    const latestPhotoURL = currentUser.photoURL || "";
+    const latestUsername = defaultUsername || "User";
 
-    const latestPhotoURL =
-      existingProfile?.photoURL || currentUser.photoURL || "";
-
-    const latestUsername =
-      existingProfile?.username || defaultUsername || "";
-
-    // 1. 先寫入使用者資料
+    // 第一階段：先保證 ALL 群組一定建立成功
     await update(ref(database), {
-      [`users/${currentUser.uid}/email`]:
-        existingProfile?.email || currentUser.email || "",
-      [`users/${currentUser.uid}/username`]:
-        existingProfile?.username || defaultUsername || "",
+      [`users/${currentUser.uid}/email`]: currentUser.email || "",
+      [`users/${currentUser.uid}/username`]: latestUsername,
       [`users/${currentUser.uid}/photoURL`]: latestPhotoURL,
-      [`users/${currentUser.uid}/phone`]: existingProfile?.phone || "",
-      [`users/${currentUser.uid}/address`]: existingProfile?.address || "",
       [`users/${currentUser.uid}/updatedAt`]: serverTimestamp(),
 
       [`publicProfiles/${currentUser.uid}/photoURL`]: latestPhotoURL,
       [`publicProfiles/${currentUser.uid}/username`]: latestUsername,
-      [`publicProfiles/${currentUser.uid}/email`]:
-        existingProfile?.email || currentUser.email || "",
-    });
+      [`publicProfiles/${currentUser.uid}/email`]: currentUser.email || "",
 
-    // 2. 重點：不要先讀 rooms/main
-    // 新帳號還不是 member，不能 read rooms/main
-    // 直接把自己寫進 rooms/main/members
-    await update(ref(database), {
-      [`rooms/${DEFAULT_ROOM_ID}/members/${currentUser.uid}`]: true,
-    });
-
-    // 3. 加進自己的聊天室列表
-    await update(ref(database), {
-      [`userRooms/${currentUser.uid}/${DEFAULT_ROOM_ID}`]: true,
-    });
-
-    // 4. 這時候已經是 member 了，才補 ALL 的基本資料
-    await update(ref(database), {
       [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
       [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,
       [`rooms/${DEFAULT_ROOM_ID}/avatar`]: DEFAULT_ROOM.avatar,
+      [`rooms/${DEFAULT_ROOM_ID}/members/${currentUser.uid}`]: true,
+
+      [`userRooms/${currentUser.uid}/${DEFAULT_ROOM_ID}`]: true,
     });
+
+    // 第二階段：Gemini bot 另外處理，失敗也不能影響 ALL
+    try {
+      const alreadyWelcomedSnapshot = await get(
+        ref(database, `botWelcomedUsers/${currentUser.uid}`)
+      );
+
+      if (alreadyWelcomedSnapshot.exists()) {
+        return;
+      }
+
+      const botText = await generateGeminiWelcomeMessage(
+        latestUsername || currentUser.email || "new user"
+      );
+
+      const botMessageRef = push(
+        ref(database, `roomMessages/${DEFAULT_ROOM_ID}`)
+      );
+
+      await set(botMessageRef, {
+        username: "ChatGPT Bot",
+        uid: "chatgpt-bot",
+        type: "bot",
+        text: botText,
+        roomId: DEFAULT_ROOM_ID,
+        createdAt: serverTimestamp(),
+      });
+
+      await set(ref(database, `botWelcomedUsers/${currentUser.uid}`), true);
+    } catch (error) {
+      console.error("Bot welcome failed, but ALL room was already created:", error);
+    }
   };
 
   const selectedRoom = useMemo(() => {
@@ -203,7 +265,7 @@ function App() {
     const unsubscribeUserRooms = onValue(userRoomsRef, async (snapshot) => {
       const data = snapshot.val();
 
-      if (!data) {
+      if (!data || !data[DEFAULT_ROOM_ID]) {
         await ensureDefaultRoomForUser(user);
         return;
       }
@@ -1777,7 +1839,9 @@ function App() {
                   key={msg.id}
                 >
                 <div className="message-avatar">
-                  {userProfiles[msg.uid]?.photoURL ? (
+                  {msg.uid === "chatgpt-bot" ? (
+                    "AI"
+                  ) : userProfiles[msg.uid]?.photoURL ? (
                     <img
                       src={userProfiles[msg.uid].photoURL}
                       alt={userProfiles[msg.uid]?.username || msg.username || "User"}
@@ -1798,7 +1862,7 @@ function App() {
                     </span>
 
                     <div className="message-actions">
-                      {msg.uid !== user.uid && (
+                      {msg.uid !== user.uid && msg.uid !== "chatgpt-bot" && (
                         <button
                           className="mini-action-button"
                           onClick={() => handleBlockUser(msg)}
