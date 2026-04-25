@@ -50,8 +50,9 @@ function App() {
   const [activePanel, setActivePanel] = useState(null);
   const [newGroupName, setNewGroupName] = useState("");
 
-  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [blockedMap, setBlockedMap] = useState({});
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [renameRoomName, setRenameRoomName] = useState("");
 
   const [userProfiles, setUserProfiles] = useState({});
   const [userProfile, setUserProfile] = useState(null);
@@ -237,8 +238,20 @@ function App() {
     return () => unsubscribeMessages();
   }, [user, selectedRoomId]);
 
+  const isBlockedBetween = (uidA, uidB) => {
+    if (!uidA || !uidB) return false;
+
+    return (
+      blockedMap?.[uidA]?.[uidB] === true ||
+      blockedMap?.[uidB]?.[uidA] === true
+    );
+  };
+
   const visibleMessages = messages.filter((msg) => {
-    return !blockedUsers.some((blocked) => blocked.uid === msg.uid);
+    if (!user) return true;
+    if (msg.uid === user.uid) return true;
+
+    return !isBlockedBetween(user.uid, msg.uid);
   });
 
   useEffect(() => {
@@ -265,6 +278,25 @@ function App() {
   }, [user]);
 
   useEffect(() => {
+    if (!user) {
+      setBlockedMap({});
+      return;
+    }
+
+    const blocksRef = ref(database, "blocks");
+
+    const unsubscribeBlocks = onValue(blocksRef, (snapshot) => {
+      setBlockedMap(snapshot.val() || {});
+    });
+
+    return () => unsubscribeBlocks();
+  }, [user]);
+
+  useEffect(() => {
+    setRenameRoomName(selectedRoom?.name || "");
+  }, [selectedRoom?.id, selectedRoom?.name]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       if (messageListRef.current) {
         messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
@@ -287,6 +319,16 @@ function App() {
       }))
     : [];
   
+  const otherMemberInTwoPersonRoom =
+    roomMembers.length === 2
+      ? roomMembers.find((member) => member.uid !== user?.uid)
+      : null;
+
+  const isTwoPersonBlockedRoom =
+    roomMembers.length === 2 &&
+    otherMemberInTwoPersonRoom &&
+    isBlockedBetween(user?.uid, otherMemberInTwoPersonRoom.uid);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError("");
@@ -359,6 +401,11 @@ function App() {
 
     if (!selectedRoom || !selectedRoom.members?.[user.uid]) {
       alert("You are not a member of this chatroom.");
+      return;
+    }
+
+    if (isTwoPersonBlockedRoom) {
+      alert("You can no longer chat with this user.");
       return;
     }
 
@@ -515,6 +562,94 @@ function App() {
     }
   };
 
+  const handleRenameRoom = async (e) => {
+    e.preventDefault();
+
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    if (!selectedRoomId || !selectedRoom) {
+      alert("Please select a chatroom first.");
+      return;
+    }
+
+    if (!selectedRoom.members?.[user.uid]) {
+      alert("Only room members can rename this group.");
+      return;
+    }
+
+    const trimmedName = renameRoomName.trim();
+
+    if (!trimmedName) {
+      alert("Please enter a group name.");
+      return;
+    }
+
+    try {
+      await update(ref(database), {
+        [`rooms/${selectedRoomId}/name`]: trimmedName,
+        [`rooms/${selectedRoomId}/avatar`]: trimmedName[0].toUpperCase(),
+      });
+
+      alert("Group name updated.");
+    } catch (error) {
+      console.error("Rename room failed:", error);
+      alert("Rename failed: " + error.message);
+    }
+  };
+
+  const handleRemoveMemberFromRoom = async (memberUid) => {
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    if (!selectedRoomId || !selectedRoom) {
+      alert("Please select a chatroom first.");
+      return;
+    }
+
+    if (!selectedRoom.members?.[user.uid]) {
+      alert("Only room members can remove people.");
+      return;
+    }
+
+    if (memberUid === selectedRoom.createdBy) {
+      alert("You cannot remove the group owner.");
+      return;
+    }
+
+    if (memberUid === user.uid) {
+      alert("You cannot remove yourself here.");
+      return;
+    }
+
+    const memberName =
+      userProfiles[memberUid]?.username ||
+      userProfiles[memberUid]?.email ||
+      "this member";
+
+    const confirmRemove = window.confirm(`Remove ${memberName} from this group?`);
+
+    if (!confirmRemove) {
+      return;
+    }
+
+    try {
+      await update(ref(database), {
+        [`rooms/${selectedRoomId}/members/${memberUid}`]: null,
+        [`userRooms/${memberUid}/${selectedRoomId}`]: null,
+      });
+
+      alert(`${memberName} has been removed.`);
+    } catch (error) {
+      console.error("Remove member failed:", error);
+      alert("Remove failed: " + error.message);
+    }
+  };
+
   const handleOpenProfile = () => {
       setProfileForm({
         photoURL: userProfile?.photoURL || user.photoURL || "",
@@ -605,33 +740,62 @@ function App() {
     }
   };
 
-  const handleBlockUser = (msg) => {
+  const handleBlockUser = async (msg) => {
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
     if (msg.uid === user.uid) {
       alert("You cannot block yourself.");
       return;
     }
 
-    const alreadyBlocked = blockedUsers.some((blocked) => blocked.uid === msg.uid);
-
-    if (alreadyBlocked) {
+    if (blockedMap?.[user.uid]?.[msg.uid]) {
       alert("This user is already blocked.");
       return;
     }
 
-    setBlockedUsers((prevUsers) => [
-      ...prevUsers,
-      {
-        uid: msg.uid,
-        username: msg.username,
-      },
-    ]);
+    const confirmBlock = window.confirm(`Block ${msg.username}?`);
+
+    if (!confirmBlock) {
+      return;
+    }
+
+    try {
+      await update(ref(database), {
+        [`blocks/${user.uid}/${msg.uid}`]: true,
+      });
+    } catch (error) {
+      console.error("Block user failed:", error);
+      alert("Block failed: " + error.message);
+    }
   };
 
-  const handleUnblockUser = (uid) => {
-    setBlockedUsers((prevUsers) =>
-      prevUsers.filter((blocked) => blocked.uid !== uid)
-    );
+  const handleUnblockUser = async (uid) => {
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    try {
+      await update(ref(database), {
+        [`blocks/${user.uid}/${uid}`]: null,
+      });
+    } catch (error) {
+      console.error("Unblock user failed:", error);
+      alert("Unblock failed: " + error.message);
+    }
   };
+
+  const blockedUsersForPanel = Object.keys(blockedMap?.[user?.uid] || {}).map(
+    (uid) => ({
+      uid,
+      username: userProfiles[uid]?.username || "Unknown user",
+      email: userProfiles[uid]?.email || "",
+      photoURL: userProfiles[uid]?.photoURL || "",
+    })
+  );
 
   const getInitial = (name) => {
     if (!name) return "?";
@@ -851,6 +1015,21 @@ function App() {
               </button>
             </div>
 
+            <form className="rename-room-form" onSubmit={handleRenameRoom}>
+              <h3>Rename group</h3>
+
+              <div className="rename-room-row">
+                <input
+                  type="text"
+                  placeholder="Group name"
+                  value={renameRoomName}
+                  onChange={(e) => setRenameRoomName(e.target.value)}
+                />
+
+                <button type="submit">Save</button>
+              </div>
+            </form>
+
             <div className="room-info-section">
               <h3>Members</h3>
 
@@ -872,9 +1051,22 @@ function App() {
                       <span>{member.email || "No email"}</span>
                     </div>
 
-                    {member.uid === selectedRoom?.createdBy && (
-                      <span className="owner-badge">Owner</span>
-                    )}
+                    <div className="room-member-actions">
+                      {member.uid === selectedRoom?.createdBy && (
+                        <span className="owner-badge">Owner</span>
+                      )}
+
+                      {member.uid !== selectedRoom?.createdBy && member.uid !== user.uid && (
+                        <button
+                          type="button"
+                          className="remove-member-button"
+                          onClick={() => handleRemoveMemberFromRoom(member.uid)}
+                          title="Remove member"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))
               )}
@@ -960,12 +1152,16 @@ function App() {
           <div className="drawer-panel">
             <h3>Blocked Users</h3>
 
-            {blockedUsers.length === 0 ? (
+            {blockedUsersForPanel.length === 0 ? (
               <p className="empty-panel-text">No blocked users.</p>
             ) : (
-              blockedUsers.map((blocked) => (
+              blockedUsersForPanel.map((blocked) => (
                 <div className="blocked-user-row" key={blocked.uid}>
-                  <span>{blocked.username}</span>
+                  <span>
+                    {blocked.username}
+                    {blocked.email && <small>{blocked.email}</small>}
+                  </span>
+
                   <button onClick={() => handleUnblockUser(blocked.uid)}>
                     Unblock
                   </button>
@@ -1119,6 +1315,13 @@ function App() {
               </div>
             ))
           )}
+
+          {isTwoPersonBlockedRoom && (
+            <div className="blocked-chat-warning">
+              You can no longer chat with this user.
+            </div>
+          )}
+
         </section>
 
         <form className="message-form" onSubmit={handleSendMessage}>
@@ -1128,12 +1331,21 @@ function App() {
 
           <input
             type="text"
-            placeholder={`Write a message to ${selectedRoom?.name || "this room"}...`}
+            placeholder={
+              isTwoPersonBlockedRoom
+                ? "You can no longer chat with this user."
+                : `Write a message to ${selectedRoom?.name || "this room"}...`
+            }
             value={message}
+            disabled={isTwoPersonBlockedRoom}
             onChange={(e) => setMessage(e.target.value)}
           />
 
-          <button type="submit" className="send-button">
+          <button
+            type="submit"
+            className="send-button"
+            disabled={isTwoPersonBlockedRoom}
+          >
             Send
           </button>
         </form>
