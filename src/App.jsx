@@ -63,6 +63,8 @@ function App() {
     address: "",
   });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
 
   const messageListRef = useRef(null);
 
@@ -101,6 +103,7 @@ function App() {
 
         [`publicProfiles/${currentUser.uid}/photoURL`]: latestPhotoURL,
         [`publicProfiles/${currentUser.uid}/username`]: latestUsername,
+        [`publicProfiles/${currentUser.uid}/email`]: existingProfile?.email || currentUser.email || "",
 
         [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
         [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,
@@ -275,6 +278,15 @@ function App() {
     ? visibleMessages[visibleMessages.length - 1].text
     : "No messages yet";
 
+  const roomMembers = selectedRoom?.members
+    ? Object.keys(selectedRoom.members).map((uid) => ({
+        uid,
+        username: userProfiles[uid]?.username || "Unknown user",
+        email: userProfiles[uid]?.email || "",
+        photoURL: userProfiles[uid]?.photoURL || "",
+      }))
+    : [];
+  
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError("");
@@ -443,6 +455,66 @@ function App() {
     }
   };
 
+  const handleAddMemberToRoom = async (e) => {
+    e.preventDefault();
+
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    if (!selectedRoomId || !selectedRoom) {
+      alert("Please select a chatroom first.");
+      return;
+    }
+
+    if (!selectedRoom.members?.[user.uid]) {
+      alert("Only room members can add new people.");
+      return;
+    }
+
+    const trimmedEmail = inviteEmail.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      alert("Please enter an email.");
+      return;
+    }
+
+    try {
+      const profilesSnapshot = await get(ref(database, "publicProfiles"));
+      const profiles = profilesSnapshot.val() || {};
+
+      const foundEntry = Object.entries(profiles).find(([, profile]) => {
+        return profile.email?.toLowerCase() === trimmedEmail;
+      });
+
+      if (!foundEntry) {
+        alert("User not found. Make sure this user has logged in before.");
+        return;
+      }
+
+      const [newMemberUid, newMemberProfile] = foundEntry;
+
+      if (selectedRoom.members?.[newMemberUid]) {
+        alert("This user is already in this chatroom.");
+        return;
+      }
+
+      const updates = {
+        [`rooms/${selectedRoomId}/members/${newMemberUid}`]: true,
+        [`userRooms/${newMemberUid}/${selectedRoomId}`]: true,
+      };
+
+      await update(ref(database), updates);
+
+      setInviteEmail("");
+      alert(`${newMemberProfile.username || trimmedEmail} has been added.`);
+    } catch (error) {
+      console.error("Add member failed:", error);
+      alert("Add member failed: " + error.message);
+    }
+  };
+
   const handleOpenProfile = () => {
       setProfileForm({
         photoURL: userProfile?.photoURL || user.photoURL || "",
@@ -522,6 +594,7 @@ function App() {
 
         [`publicProfiles/${user.uid}/photoURL`]: profileForm.photoURL,
         [`publicProfiles/${user.uid}/username`]: trimmedUsername,
+        [`publicProfiles/${user.uid}/email`]: trimmedEmail,
       };
 
       await update(ref(database), profileUpdates);
@@ -754,6 +827,75 @@ function App() {
         </div>
       )}
 
+      {isRoomInfoOpen && (
+        <div
+          className="room-info-modal-backdrop"
+          onClick={() => setIsRoomInfoOpen(false)}
+        >
+          <div
+            className="room-info-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="room-info-modal-header">
+              <div>
+                <h2>{selectedRoom?.name || "Chatroom"}</h2>
+                <p>{roomMembers.length} members</p>
+              </div>
+
+              <button
+                type="button"
+                className="room-info-close-button"
+                onClick={() => setIsRoomInfoOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="room-info-section">
+              <h3>Members</h3>
+
+              {roomMembers.length === 0 ? (
+                <p className="empty-panel-text">No members yet.</p>
+              ) : (
+                roomMembers.map((member) => (
+                  <div className="room-member-row" key={member.uid}>
+                    <div className="room-member-avatar">
+                      {member.photoURL ? (
+                        <img src={member.photoURL} alt={member.username} />
+                      ) : (
+                        getInitial(member.username || member.email)
+                      )}
+                    </div>
+
+                    <div className="room-member-info">
+                      <strong>{member.username}</strong>
+                      <span>{member.email || "No email"}</span>
+                    </div>
+
+                    {member.uid === selectedRoom?.createdBy && (
+                      <span className="owner-badge">Owner</span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form className="add-member-form" onSubmit={handleAddMemberToRoom}>
+              <h3>Add member</h3>
+
+              <input
+                type="email"
+                placeholder="Enter user's email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+
+              <button type="submit">Add to chatroom</button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <aside className={`side-menu ${isMenuOpen ? "open" : ""}`}>
         <div className="side-menu-profile">
           <div className="profile-avatar">
@@ -901,7 +1043,13 @@ function App() {
 
           <div className="chat-header-actions">
             <button className="icon-button">⌕</button>
-            <button className="icon-button">⋮</button>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => setIsRoomInfoOpen(true)}
+            >
+              ⋮
+            </button>
           </div>
         </header>
 

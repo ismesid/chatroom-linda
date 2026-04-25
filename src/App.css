@@ -1062,3 +1062,183 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.room-info-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 65;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+.room-info-modal {
+  width: min(520px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: #17212b;
+  border: 1px solid #253341;
+  border-radius: 18px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+}
+
+.room-info-modal-header {
+  padding: 22px 24px;
+  border-bottom: 1px solid #253341;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.room-info-modal-header h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 26px;
+}
+
+.room-info-modal-header p {
+  margin: 6px 0 0;
+  color: #8aa1b4;
+  font-size: 15px;
+}
+
+.room-info-close-button {
+  border: none;
+  background: transparent;
+  color: #8aa1b4;
+  cursor: pointer;
+  font-size: 34px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.room-info-close-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+}
+
+.room-info-section {
+  padding: 20px 24px;
+}
+
+.room-info-section h3,
+.add-member-form h3 {
+  margin: 0 0 14px;
+  color: #f8fafc;
+  font-size: 19px;
+}
+
+.room-member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #253341;
+}
+
+.room-member-row:last-child {
+  border-bottom: none;
+}
+
+.room-member-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2b8ad6, #8b5cf6);
+  color: white;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.room-member-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.room-member-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-member-info strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 16px;
+}
+
+.room-member-info span {
+  display: block;
+  margin-top: 4px;
+  color: #8aa1b4;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-badge {
+  border-radius: 999px;
+  background: rgba(97, 168, 232, 0.16);
+  color: #61a8e8;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.add-member-form {
+  padding: 20px 24px 24px;
+  border-top: 1px solid #253341;
+  display: grid;
+  gap: 12px;
+}
+
+.add-member-form input {
+  height: 44px;
+  border: 1px solid #2f4052;
+  background: #0e1621;
+  color: #f8fafc;
+  border-radius: 10px;
+  padding: 0 14px;
+  outline: none;
+  font-size: 15px;
+}
+
+.add-member-form input:focus {
+  border-color: #61a8e8;
+  box-shadow: 0 0 0 2px rgba(97, 168, 232, 0.25);
+}
+
+.add-member-form button {
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: #2b8ad6;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.add-member-form button:hover {
+  background: #2379bf;
+}
+
+@media (max-width: 720px) {
+  .room-info-modal-backdrop {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .room-info-modal {
+    width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+}
