@@ -8,6 +8,8 @@ import {
   serverTimestamp,
   query,
   orderByChild,
+  set,
+  update,
 } from "firebase/database";
 import {
   createUserWithEmailAndPassword,
@@ -20,26 +22,14 @@ import {
 import { auth, database } from "./firebase";
 import "./App.css";
 
-const DEFAULT_ROOMS = [
-  {
-    id: "main",
-    name: "SITCON",
-    description: "Main chatroom",
-    avatar: "S",
-  },
-  {
-    id: "project",
-    name: "Project Team",
-    description: "Local demo group",
-    avatar: "P",
-  },
-  {
-    id: "general",
-    name: "General",
-    description: "Local demo group",
-    avatar: "G",
-  },
-];
+const DEFAULT_ROOM_ID = "main";
+
+const DEFAULT_ROOM = {
+  id: DEFAULT_ROOM_ID,
+  name: "ALL",
+  description: "Main chatroom",
+  avatar: "S",
+};
 
 function App() {
   const [user, setUser] = useState(null);
@@ -53,8 +43,8 @@ function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authError, setAuthError] = useState("");
 
-  const [rooms, setRooms] = useState(DEFAULT_ROOMS);
-  const [selectedRoomId, setSelectedRoomId] = useState(DEFAULT_ROOMS[0].id);
+  const [rooms, setRooms] = useState([]);
+  const [selectedRoomId, setSelectedRoomId] = useState("");
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
@@ -64,27 +54,109 @@ function App() {
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
   const selectedRoom = useMemo(() => {
-    return rooms.find((room) => room.id === selectedRoomId) || rooms[0];
+    return rooms.find((room) => room.id === selectedRoomId) || null;
   }, [rooms, selectedRoomId]);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+
+      if (!currentUser) {
+        setRooms([]);
+        setMessages([]);
+        setSelectedRoomId("");
+        return;
+      }
+
+      const username = currentUser.displayName || currentUser.email;
+
+      const updates = {
+        [`users/${currentUser.uid}/email`]: currentUser.email,
+        [`users/${currentUser.uid}/username`]: username,
+        [`users/${currentUser.uid}/updatedAt`]: serverTimestamp(),
+
+        [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
+        [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,
+        [`rooms/${DEFAULT_ROOM_ID}/avatar`]: DEFAULT_ROOM.avatar,
+        [`rooms/${DEFAULT_ROOM_ID}/members/${currentUser.uid}`]: true,
+
+        [`userRooms/${currentUser.uid}/${DEFAULT_ROOM_ID}`]: true,
+      };
+
+      await update(ref(database), updates);
     });
 
     return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      setRooms([]);
+      setSelectedRoomId("");
+      return;
+    }
+
+    const userRoomsRef = ref(database, `userRooms/${user.uid}`);
+
+    const unsubscribeUserRooms = onValue(userRoomsRef, (snapshot) => {
+      const data = snapshot.val();
+
+      if (!data) {
+        setRooms([]);
+        setSelectedRoomId("");
+        return;
+      }
+
+      const roomIds = Object.keys(data);
+
+      roomIds.forEach((roomId) => {
+        const roomRef = ref(database, `rooms/${roomId}`);
+
+        onValue(roomRef, (roomSnapshot) => {
+          const roomData = roomSnapshot.val();
+
+          if (!roomData) return;
+
+          setRooms((prevRooms) => {
+            const nextRoom = {
+              id: roomId,
+              name: roomData.name,
+              description: roomData.description || "Group chat",
+              avatar: roomData.avatar || roomData.name?.[0]?.toUpperCase() || "?",
+              createdBy: roomData.createdBy || "",
+              members: roomData.members || {},
+            };
+
+            const exists = prevRooms.some((room) => room.id === roomId);
+
+            if (exists) {
+              return prevRooms.map((room) =>
+                room.id === roomId ? nextRoom : room
+              );
+            }
+
+            return [...prevRooms, nextRoom];
+          });
+        });
+      });
+    });
+
+    return () => unsubscribeUserRooms();
+  }, [user]);
+
+  useEffect(() => {
+    if (!selectedRoomId && rooms.length > 0) {
+      setSelectedRoomId(rooms[0].id);
+    }
+  }, [rooms, selectedRoomId]);
+
+    useEffect(() => {
     if (!user || !selectedRoomId) {
       setMessages([]);
       return;
     }
 
-    const path =
-      selectedRoomId === "main"
-        ? "messages"
-        : `rooms/${selectedRoomId}/messages`;
+    const path = `roomMessages/${selectedRoomId}`;
 
     const messagesRef = query(ref(database, path), orderByChild("createdAt"));
 
@@ -184,12 +256,12 @@ function App() {
       return;
     }
 
-    const path =
-      selectedRoomId === "main"
-        ? "messages"
-        : `rooms/${selectedRoomId}/messages`;
+    if (!selectedRoom || !selectedRoom.members?.[user.uid]) {
+      alert("You are not a member of this chatroom.");
+      return;
+    }
 
-    const messagesRef = ref(database, path);
+    const messagesRef = ref(database, `roomMessages/${selectedRoomId}`);
 
     try {
       await push(messagesRef, {
@@ -224,10 +296,7 @@ function App() {
       return;
     }
 
-    const path =
-      selectedRoomId === "main"
-        ? `messages/${msg.id}`
-        : `rooms/${selectedRoomId}/messages/${msg.id}`;
+    const path = `roomMessages/${selectedRoomId}/${msg.id}`;
 
     try {
       await remove(ref(database, path));
@@ -237,8 +306,13 @@ function App() {
     }
   };
 
-  const handleCreateGroup = (e) => {
+  const handleCreateGroup = async (e) => {
     e.preventDefault();
+
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
 
     const trimmedName = newGroupName.trim();
 
@@ -247,21 +321,38 @@ function App() {
       return;
     }
 
+    const newRoomRef = push(ref(database, "rooms"));
+    const newRoomId = newRoomRef.key;
+
     const newRoom = {
-      id: `local-${Date.now()}`,
       name: trimmedName,
       description: "New group",
       avatar: trimmedName[0].toUpperCase(),
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      members: {
+        [user.uid]: true,
+      },
     };
 
-    setRooms((prevRooms) => [newRoom, ...prevRooms]);
-    setSelectedRoomId(newRoom.id);
+  try {
+    const updates = {
+      [`rooms/${newRoomId}`]: newRoom,
+      [`userRooms/${user.uid}/${newRoomId}`]: true,
+    };
+
+    await update(ref(database), updates);
+
+    setSelectedRoomId(newRoomId);
     setNewGroupName("");
     setActivePanel(null);
     setIsMenuOpen(false);
     setIsMobileChatOpen(true);
-  };
-
+  } catch (error) {
+    console.error("Create group failed:", error);
+    alert("Create group failed: " + error.message);
+  }
+};
   const handleBlockUser = (msg) => {
     if (msg.uid === user.uid) {
       alert("You cannot block yourself.");
@@ -510,10 +601,10 @@ function App() {
               ←
             </button>
 
-            <div className="header-avatar">{selectedRoom.avatar}</div>
+            <div className="header-avatar">{selectedRoom?.avatar || "?"}</div>
 
             <div>
-              <h1>{selectedRoom.name}</h1>
+              <h1>{selectedRoom?.name || "Chatroom"}</h1>
               <p>
                 {visibleMessages.length === 0
                   ? "No messages"
@@ -532,7 +623,7 @@ function App() {
           <div className="pinned-line" />
           <div>
             <strong>Pinned message</strong>
-            <p>Welcome to {selectedRoom.name}</p>
+            <p>Welcome to {selectedRoom?.name || "this room"}</p>
           </div>
         </div>
 
@@ -592,7 +683,7 @@ function App() {
 
           <input
             type="text"
-            placeholder={`Write a message to ${selectedRoom.name}...`}
+            placeholder={`Write a message to ${selectedRoom?.name || "this room"}...`}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
