@@ -2,12 +2,14 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { getDatabase } from "firebase/database";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAFVdG7J4wVuxUMMMnr3CRcgQt2sx_5O4s",
   authDomain: "chatroom-linda.firebaseapp.com",
+  databaseURL: "https://chatroom-linda-default-rtdb.asia-southeast1.firebasedatabase.app/",
   projectId: "chatroom-linda",
   storageBucket: "chatroom-linda.firebasestorage.app",
   messagingSenderId: "268702218367",
@@ -19,6 +21,7 @@ const app = initializeApp(firebaseConfig);
 
 // 匯出之後會用到的 Firebase 功能
 export const auth = getAuth(app);
+export const database = getDatabase(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
