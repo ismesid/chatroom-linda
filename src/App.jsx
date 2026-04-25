@@ -14,6 +14,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from "firebase/auth";
 import { auth, database } from "./firebase";
 import "./App.css";
@@ -90,6 +92,21 @@ function App() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setAuthError("");
+
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+
+      setEmail("");
+      setPassword("");
+    } catch (error) {
+      console.error("Google login failed:", error);
+      setAuthError(error.message);
+    }
+  };
+
   const handleLogout = async () => {
     await signOut(auth);
     setMessage("");
@@ -114,7 +131,7 @@ function App() {
 
     try {
       await push(messagesRef, {
-        username: user.email,
+        username: user.displayName || user.email,
         uid: user.uid,
         text: trimmedMessage,
         createdAt: serverTimestamp(),
@@ -181,6 +198,18 @@ function App() {
             </button>
           </form>
 
+          <div className="auth-divider">
+            <span>or</span>
+          </div>
+
+          <button
+            className="google-login-button"
+            type="button"
+            onClick={handleGoogleLogin}
+          >
+            Continue with Google
+          </button>
+
           <button
             className="switch-auth-button"
             type="button"
@@ -204,7 +233,7 @@ function App() {
         <header className="chat-header">
           <div>
             <h1>Chatroom</h1>
-            <p>Logged in as {user.email}</p>
+            <p>Logged in as {user.displayName || user.email}</p>
           </div>
 
           <button className="logout-button" onClick={handleLogout}>
