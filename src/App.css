@@ -558,19 +558,28 @@ input {
   gap: 12px;
 }
 
-.message-form input {
-  height: 48px;
+.message-form textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 130px;
   border: none;
   background: #0e1621;
   color: #f8fafc;
-  border-radius: 999px;
-  padding: 0 20px;
+  border-radius: 24px;
+  padding: 13px 20px;
   outline: none;
   font-size: 16px;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
 }
 
-.message-form input:focus {
+.message-form textarea:focus {
   box-shadow: 0 0 0 2px rgba(97, 168, 232, 0.45);
+}
+
+.message-form textarea::placeholder {
+  color: #8aa1b4;
 }
 
 .attach-button {
@@ -1376,7 +1385,7 @@ input {
   font-size: 14px;
 }
 
-.message-form input:disabled {
+.message-form textarea:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -1574,4 +1583,26 @@ input {
 
 .message-code code {
   font-family: inherit;
+}
+
+.message-form textarea {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(138, 161, 180, 0.35) transparent;
+}
+
+.message-form textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message-form textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-form textarea::-webkit-scrollbar-thumb {
+  background: rgba(138, 161, 180, 0.35);
+  border-radius: 999px;
+}
+
+.message-form textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(138, 161, 180, 0.55);
 }

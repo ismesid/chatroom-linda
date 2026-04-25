@@ -630,9 +630,9 @@ function App() {
       return;
     }
 
-    const trimmedMessage = message.trim();
+    const messageToSend = message;
 
-    if (!trimmedMessage) {
+    if (messageToSend.length === 0) {
       alert("Please enter a message.");
       return;
     }
@@ -653,7 +653,7 @@ function App() {
       await push(messagesRef, {
         username: userProfile?.username || user.displayName || user.email,
         uid: user.uid,
-        text: trimmedMessage,
+        text: messageToSend,
         roomId: selectedRoomId,
         createdAt: serverTimestamp(),
       });
@@ -1912,8 +1912,7 @@ function App() {
             onChange={handleSendImageMessage}
           />
 
-          <input
-            type="text"
+          <textarea
             placeholder={
               isTwoPersonBlockedRoom
                 ? "You can no longer chat with this user."
@@ -1921,7 +1920,14 @@ function App() {
             }
             value={message}
             disabled={isTwoPersonBlockedRoom}
+            rows={1}
             onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form.requestSubmit();
+              }
+            }}
           />
 
           <button
