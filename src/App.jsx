@@ -53,6 +53,7 @@ function App() {
 
   const [rooms, setRooms] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [roomSearchText, setRoomSearchText] = useState("");
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
@@ -133,6 +134,17 @@ function App() {
   const selectedRoom = useMemo(() => {
     return rooms.find((room) => room.id === selectedRoomId) || null;
   }, [rooms, selectedRoomId]);
+
+  const filteredRooms = useMemo(() => {
+    const keyword = roomSearchText.trim().toLowerCase();
+
+    if (!keyword) return rooms;
+
+    return rooms.filter((room) => {
+      const searchableText = `${room.name || ""} ${room.description || ""}`.toLowerCase();
+      return searchableText.includes(keyword);
+    });
+  }, [rooms, roomSearchText]);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -1467,34 +1479,57 @@ function App() {
             ☰
           </button>
 
-          <div className="search-box">Search</div>
+          <div className="search-box">
+            <input
+              type="text"
+              placeholder="Search"
+              value={roomSearchText}
+              onChange={(e) => setRoomSearchText(e.target.value)}
+            />
+
+            {roomSearchText && (
+              <button
+                type="button"
+                className="room-search-clear-button"
+                onClick={() => setRoomSearchText("")}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
         </div>
 
         <div className="room-list">
-          {rooms.map((room, index) => (
-            <button
-              className={`room-item ${
-                selectedRoomId === room.id ? "active" : ""
-              }`}
-              key={room.id}
-              onClick={() => handleSelectRoom(room.id)}
-            >
-              <div className="room-avatar">{room.avatar}</div>
+          {filteredRooms.length === 0 ? (
+            <p className="empty-room-search">No groups found.</p>
+          ) : (
+            filteredRooms.map((room) => (
+              <button
+                className={`room-item ${
+                  selectedRoomId === room.id ? "active" : ""
+                }`}
+                key={room.id}
+                onClick={() => handleSelectRoom(room.id)}
+              >
+                <div className="room-avatar">{room.avatar}</div>
 
-              <div className="room-info">
-                <div className="room-title-row">
-                  <h3>{room.name}</h3>
-                  <span>{index === 0 ? "04:49" : ""}</span>
+                <div className="room-info">
+                  <div className="room-title-row">
+                    <h3>{room.name}</h3>
+                    <span>{room.id === rooms[0]?.id ? "04:49" : ""}</span>
+                  </div>
+
+                  <p>
+                    {room.id === selectedRoomId
+                      ? lastMessageText
+                      : room.description}
+                  </p>
                 </div>
-
-                <p>
-                  {room.id === selectedRoomId
-                    ? lastMessageText
-                    : room.description}
-                </p>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))
+          )}
         </div>
       </section>
 

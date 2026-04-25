@@ -221,6 +221,51 @@ input {
   font-size: 18px;
 }
 
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #f8fafc;
+  font-size: 18px;
+}
+
+.search-box input::placeholder {
+  color: #7f91a4;
+}
+
+.search-box:focus-within {
+  box-shadow: 0 0 0 2px rgba(97, 168, 232, 0.35);
+}
+
+.room-search-clear-button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #9fb2c6;
+  cursor: pointer;
+  font-size: 22px;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.room-search-clear-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.empty-room-search {
+  margin: 28px 20px;
+  color: #8aa1b4;
+  text-align: center;
+  font-size: 15px;
+}
+
 .room-list {
   flex: 1;
   overflow-y: auto;
