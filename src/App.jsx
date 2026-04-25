@@ -8,7 +8,7 @@ import {
   serverTimestamp,
   query,
   orderByChild,
-  set,
+  get,
   update,
 } from "firebase/database";
 import {
@@ -53,6 +53,17 @@ function App() {
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
 
+  const [userProfiles, setUserProfiles] = useState({});
+  const [userProfile, setUserProfile] = useState(null);
+  const [profileForm, setProfileForm] = useState({
+    photoURL: "",
+    username: "",
+    email: "",
+    phone: "",
+    address: "",
+  });
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
   const messageListRef = useRef(null);
 
   const selectedRoom = useMemo(() => {
@@ -70,12 +81,26 @@ function App() {
         return;
       }
 
-      const username = currentUser.displayName || currentUser.email;
+      const defaultUsername = currentUser.displayName || currentUser.email;
+      const userRef = ref(database, `users/${currentUser.uid}`);
+      const userSnapshot = await get(userRef);
+      const existingProfile = userSnapshot.val();
+      const latestPhotoURL = existingProfile?.photoURL || currentUser.photoURL || "";
+      const latestUsername = existingProfile?.username || defaultUsername || "";
 
       const updates = {
-        [`users/${currentUser.uid}/email`]: currentUser.email,
-        [`users/${currentUser.uid}/username`]: username,
+        [`users/${currentUser.uid}/email`]:
+          existingProfile?.email || currentUser.email || "",
+        [`users/${currentUser.uid}/username`]:
+          existingProfile?.username || defaultUsername || "",
+        [`users/${currentUser.uid}/photoURL`]:
+          existingProfile?.photoURL || currentUser.photoURL || "",
+        [`users/${currentUser.uid}/phone`]: existingProfile?.phone || "",
+        [`users/${currentUser.uid}/address`]: existingProfile?.address || "",
         [`users/${currentUser.uid}/updatedAt`]: serverTimestamp(),
+
+        [`publicProfiles/${currentUser.uid}/photoURL`]: latestPhotoURL,
+        [`publicProfiles/${currentUser.uid}/username`]: latestUsername,
 
         [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
         [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,
@@ -145,6 +170,35 @@ function App() {
 
     return () => unsubscribeUserRooms();
   }, [user]);
+  
+  useEffect(() => {
+    if (!user) {
+      setUserProfile(null);
+      return;
+    }
+
+    const userRef = ref(database, `users/${user.uid}`);
+
+    const unsubscribeProfile = onValue(userRef, (snapshot) => {
+      const data = snapshot.val();
+
+      if (!data) {
+        setUserProfile(null);
+        return;
+      }
+
+      setUserProfile(data);
+      setProfileForm({
+        photoURL: data.photoURL || "",
+        username: data.username || "",
+        email: data.email || user.email || "",
+        phone: data.phone || "",
+        address: data.address || "",
+      });
+    });
+
+    return () => unsubscribeProfile();
+  }, [user]);
 
   useEffect(() => {
     if (!selectedRoomId && rooms.length > 0) {
@@ -183,6 +237,29 @@ function App() {
   const visibleMessages = messages.filter((msg) => {
     return !blockedUsers.some((blocked) => blocked.uid === msg.uid);
   });
+
+  useEffect(() => {
+    if (!user) {
+      setUserProfiles({});
+      return;
+    }
+
+    const publicProfilesRef = ref(database, "publicProfiles");
+
+    const unsubscribeProfiles = onValue(
+      publicProfilesRef,
+      (snapshot) => {
+        const data = snapshot.val() || {};
+        console.log("publicProfiles:", data);
+        setUserProfiles(data);
+      },
+      (error) => {
+        console.error("Read publicProfiles failed:", error);
+      }
+    );
+
+    return () => unsubscribeProfiles();
+  }, [user]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -277,7 +354,7 @@ function App() {
 
     try {
       await push(messagesRef, {
-        username: user.displayName || user.email,
+        username: userProfile?.username || user.displayName || user.email,
         uid: user.uid,
         text: trimmedMessage,
         roomId: selectedRoomId,
@@ -347,24 +424,114 @@ function App() {
       },
     };
 
-  try {
-    const updates = {
-      [`rooms/${newRoomId}`]: newRoom,
-      [`userRooms/${user.uid}/${newRoomId}`]: true,
+    try {
+      const updates = {
+        [`rooms/${newRoomId}`]: newRoom,
+        [`userRooms/${user.uid}/${newRoomId}`]: true,
+      };
+
+      await update(ref(database), updates);
+
+      setSelectedRoomId(newRoomId);
+      setNewGroupName("");
+      setActivePanel(null);
+      setIsMenuOpen(false);
+      setIsMobileChatOpen(true);
+    } catch (error) {
+      console.error("Create group failed:", error);
+      alert("Create group failed: " + error.message);
+    }
+  };
+
+  const handleOpenProfile = () => {
+      setProfileForm({
+        photoURL: userProfile?.photoURL || user.photoURL || "",
+        username: userProfile?.username || user.displayName || user.email || "",
+        email: userProfile?.email || user.email || "",
+        phone: userProfile?.phone || "",
+        address: userProfile?.address || "",
+      });
+
+      setIsProfileModalOpen(true);
+      setIsMenuOpen(false);
+      setActivePanel(null);
     };
 
-    await update(ref(database), updates);
+    const handleProfileInputChange = (e) => {
+      const { name, value } = e.target;
 
-    setSelectedRoomId(newRoomId);
-    setNewGroupName("");
-    setActivePanel(null);
-    setIsMenuOpen(false);
-    setIsMobileChatOpen(true);
-  } catch (error) {
-    console.error("Create group failed:", error);
-    alert("Create group failed: " + error.message);
-  }
-};
+      setProfileForm((prevForm) => ({
+        ...prevForm,
+        [name]: value,
+      }));
+    };
+
+    const handleProfileImageUpload = (e) => {
+    const file = e.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file.");
+      return;
+    }
+
+    if (file.size > 800 * 1024) {
+      alert("Image is too large. Please choose an image smaller than 800KB.");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      setProfileForm((prevForm) => ({
+        ...prevForm,
+        photoURL: reader.result,
+      }));
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    const trimmedUsername = profileForm.username.trim();
+    const trimmedEmail = profileForm.email.trim();
+
+    if (!trimmedUsername || !trimmedEmail) {
+      alert("Username and email are required.");
+      return;
+    }
+
+    try {
+      const profileUpdates = {
+        [`users/${user.uid}/photoURL`]: profileForm.photoURL,
+        [`users/${user.uid}/username`]: trimmedUsername,
+        [`users/${user.uid}/email`]: trimmedEmail,
+        [`users/${user.uid}/phone`]: profileForm.phone.trim(),
+        [`users/${user.uid}/address`]: profileForm.address.trim(),
+        [`users/${user.uid}/updatedAt`]: serverTimestamp(),
+
+        [`publicProfiles/${user.uid}/photoURL`]: profileForm.photoURL,
+        [`publicProfiles/${user.uid}/username`]: trimmedUsername,
+      };
+
+      await update(ref(database), profileUpdates);
+      setIsProfileModalOpen(false);
+    } catch (error) {
+      console.error("Save profile failed:", error);
+      alert("Save profile failed: " + error.message);
+    }
+  };
+
   const handleBlockUser = (msg) => {
     if (msg.uid === user.uid) {
       alert("You cannot block yourself.");
@@ -470,21 +637,142 @@ function App() {
         />
       )}
 
+      {isProfileModalOpen && (
+        <div
+          className="profile-modal-backdrop"
+          onClick={() => setIsProfileModalOpen(false)}
+        >
+          <div
+            className="profile-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="profile-modal-header">
+              <button
+                type="button"
+                className="profile-modal-icon-button"
+                onClick={() => setIsProfileModalOpen(false)}
+              >
+                ←
+              </button>
+
+              <h2>Info</h2>
+
+              <button
+                type="button"
+                className="profile-modal-icon-button"
+                onClick={() => setIsProfileModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <form className="profile-form" onSubmit={handleSaveProfile}>
+              <div className="profile-preview">
+                <div className="profile-preview-avatar">
+                  {profileForm.photoURL ? (
+                    <img src={profileForm.photoURL} alt="Profile preview" />
+                  ) : (
+                    getInitial(profileForm.username || profileForm.email)
+                  )}
+                </div>
+
+                <h3>{profileForm.username || "User"}</h3>
+                <p>online</p>
+              </div>
+
+              <label className="profile-field">
+                <span>Profile picture</span>
+
+                <div className="profile-file-row">
+                  <label className="profile-file-button" htmlFor="profileImageInput">
+                    Choose image
+                  </label>
+
+                  <span className="profile-file-text">
+                    {profileForm.photoURL ? "Image selected" : "No image selected"}
+                  </span>
+
+                  <input
+                    id="profileImageInput"
+                    className="profile-file-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileImageUpload}
+                  />
+                </div>
+              </label>
+
+              <label className="profile-field">
+                <span>Username</span>
+                <input
+                  type="text"
+                  name="username"
+                  placeholder="Username"
+                  value={profileForm.username}
+                  onChange={handleProfileInputChange}
+                />
+              </label>
+
+              <label className="profile-field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Email"
+                  value={profileForm.email}
+                  onChange={handleProfileInputChange}
+                />
+              </label>
+
+              <label className="profile-field">
+                <span>Phone number</span>
+                <input
+                  type="text"
+                  name="phone"
+                  placeholder="Phone number"
+                  value={profileForm.phone}
+                  onChange={handleProfileInputChange}
+                />
+              </label>
+
+              <label className="profile-field">
+                <span>Address</span>
+                <input
+                  type="text"
+                  name="address"
+                  placeholder="Address"
+                  value={profileForm.address}
+                  onChange={handleProfileInputChange}
+                />
+              </label>
+
+              <button type="submit" className="profile-save-button">
+                Save
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <aside className={`side-menu ${isMenuOpen ? "open" : ""}`}>
         <div className="side-menu-profile">
           <div className="profile-avatar">
-            {getInitial(user.displayName || user.email)}
+            {userProfile?.photoURL ? (
+              <img src={userProfile.photoURL} alt="Profile" />
+            ) : (
+              getInitial(userProfile?.username || user.email)
+            )}
           </div>
 
           <div>
-            <h2>{user.displayName || "Linda Lin"}</h2>
-            <p>{user.email}</p>
+            <h2>{userProfile?.username || user.displayName || "User"}</h2>
+            <p>{userProfile?.email || user.email}</p>
           </div>
         </div>
 
         <button
           className="menu-item"
-          onClick={() => setActivePanel("profile")}
+          onClick={handleOpenProfile}
         >
           <span>◎</span>
           My Profile
@@ -510,20 +798,6 @@ function App() {
           <span>↪</span>
           Logout
         </button>
-
-        {activePanel === "profile" && (
-          <div className="drawer-panel">
-            <h3>My Profile</h3>
-            <p className="panel-label">Display name</p>
-            <p className="panel-value">{user.displayName || "No display name"}</p>
-
-            <p className="panel-label">Email</p>
-            <p className="panel-value">{user.email}</p>
-
-            <p className="panel-label">User ID</p>
-            <p className="panel-value small-text">{user.uid}</p>
-          </div>
-        )}
 
         {activePanel === "newGroup" && (
           <div className="drawer-panel">
@@ -650,7 +924,16 @@ function App() {
                 }`}
                 key={msg.id}
               >
-                <div className="message-avatar">{getInitial(msg.username)}</div>
+                <div className="message-avatar">
+                  {userProfiles[msg.uid]?.photoURL ? (
+                    <img
+                      src={userProfiles[msg.uid].photoURL}
+                      alt={userProfiles[msg.uid]?.username || msg.username || "User"}
+                    />
+                  ) : (
+                    getInitial(userProfiles[msg.uid]?.username || msg.username)
+                  )}
+                </div>
 
                 <div
                   className={`message-card ${
@@ -658,7 +941,9 @@ function App() {
                   }`}
                 >
                   <div className="message-top">
-                    <span className="message-user">{msg.username}</span>
+                    <span className="message-user">
+                      {userProfiles[msg.uid]?.username || msg.username}
+                    </span>
 
                     <div className="message-actions">
                       {msg.uid !== user.uid && (
