@@ -135,7 +135,7 @@ function App() {
   const messageRefs = useRef({});
   const imageInputRef = useRef(null);
 
-  const ensureDefaultRoomForUser = async (currentUser) => {
+  const ensureDefaultRoomForUser = async (currentUser, shouldWelcome = false) => {
     if (!currentUser) return;
 
     const defaultUsername = currentUser.displayName || currentUser.email || "";
@@ -161,10 +161,15 @@ function App() {
       [`userRooms/${currentUser.uid}/${DEFAULT_ROOM_ID}`]: true,
     });
 
+    // 不是剛註冊的人，不發 bot 歡迎
+    if (!shouldWelcome) {
+      return;
+    }
+
     // 第二階段：Gemini bot 另外處理，失敗也不能影響 ALL
     try {
       const alreadyWelcomedSnapshot = await get(
-        ref(database, `botWelcomedUsers/${currentUser.uid}`)
+        ref(database, `botWelcomedUsers/${currentUser.uid}/${DEFAULT_ROOM_ID}`)
       );
 
       if (alreadyWelcomedSnapshot.exists()) {
@@ -180,15 +185,18 @@ function App() {
       );
 
       await set(botMessageRef, {
-        username: "ChatGPT Bot",
-        uid: "chatgpt-bot",
+        username: "Gemini Bot",
+        uid: "gemini-bot",
         type: "bot",
         text: botText,
         roomId: DEFAULT_ROOM_ID,
         createdAt: serverTimestamp(),
       });
 
-      await set(ref(database, `botWelcomedUsers/${currentUser.uid}`), true);
+      await set(
+        ref(database, `botWelcomedUsers/${currentUser.uid}/${DEFAULT_ROOM_ID}`),
+        true
+      );
     } catch (error) {
       console.error("Bot welcome failed, but ALL room was already created:", error);
     }
@@ -220,7 +228,7 @@ function App() {
         return;
       }
 
-      await ensureDefaultRoomForUser(currentUser);
+      await ensureDefaultRoomForUser(currentUser, false);
 
       const defaultUsername = currentUser.displayName || currentUser.email;
       const userRef = ref(database, `users/${currentUser.uid}`);
@@ -266,7 +274,7 @@ function App() {
       const data = snapshot.val();
 
       if (!data || !data[DEFAULT_ROOM_ID]) {
-        await ensureDefaultRoomForUser(user);
+        await ensureDefaultRoomForUser(user, false);
         return;
       }
 
@@ -593,16 +601,15 @@ function App() {
       if (authMode === "register") {
         result = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
 
-        // 新建帳號時，立刻建立個人資料並加入 ALL
-        await ensureDefaultRoomForUser(result.user);
+        // 只有新註冊帳號才發 Gemini Bot 歡迎
+        await ensureDefaultRoomForUser(result.user, true);
 
-        // 註冊後直接選到 ALL
         setSelectedRoomId(DEFAULT_ROOM_ID);
       } else {
         result = await signInWithEmailAndPassword(auth, trimmedEmail, password);
 
-        // 舊帳號登入時也補一次，避免以前註冊的帳號沒被加到 ALL
-        await ensureDefaultRoomForUser(result.user);
+        // 舊帳號登入只補 ALL，不發歡迎
+        await ensureDefaultRoomForUser(result.user, false);
       }
 
       setEmail("");
@@ -620,7 +627,7 @@ function App() {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
 
-      await ensureDefaultRoomForUser(result.user);
+      await ensureDefaultRoomForUser(result.user, false);
 
       setEmail("");
       setPassword("");
@@ -1828,7 +1835,9 @@ function App() {
                     }
                   }}
                   className={`message-row ${
-                    msg.uid === user.uid ? "my-message-row sent-message-3d" : "received-message-3d"
+                    msg.uid === user.uid && msg.type !== "bot"
+                      ? "my-message-row sent-message-3d"
+                      : "received-message-3d"
                   } ${
                     messageSearchResults.some((result) => result.id === msg.id)
                       ? "search-matched-message-row"
@@ -1839,7 +1848,7 @@ function App() {
                   key={msg.id}
                 >
                 <div className="message-avatar">
-                  {msg.uid === "chatgpt-bot" ? (
+                  {msg.type === "bot" || msg.uid === "chatgpt-bot" || msg.uid === "gemini-bot" ? (
                     "AI"
                   ) : userProfiles[msg.uid]?.photoURL ? (
                     <img
@@ -1853,25 +1862,28 @@ function App() {
 
                 <div
                   className={`message-card ${
-                    msg.uid === user.uid ? "my-message" : ""
+                    msg.uid === user.uid && msg.type !== "bot" ? "my-message" : ""
                   }`}
                 >
                   <div className="message-top">
                     <span className="message-user">
-                      {userProfiles[msg.uid]?.username || msg.username}
+                      {msg.type === "bot" ? "Gemini Bot" : userProfiles[msg.uid]?.username || msg.username}
                     </span>
 
                     <div className="message-actions">
-                      {msg.uid !== user.uid && msg.uid !== "chatgpt-bot" && (
-                        <button
-                          className="mini-action-button"
-                          onClick={() => handleBlockUser(msg)}
-                        >
-                          Block
-                        </button>
+                      {msg.uid !== user.uid &&
+                        msg.type !== "bot" &&
+                        msg.uid !== "chatgpt-bot" &&
+                        msg.uid !== "gemini-bot" && (
+                          <button
+                            className="mini-action-button"
+                            onClick={() => handleBlockUser(msg)}
+                          >
+                            Block
+                          </button>
                       )}
 
-                      {msg.uid === user.uid && msg.type !== "system" && (
+                      {msg.uid === user.uid && msg.type !== "system" && msg.type !== "bot" && (
                         <>
                           {msg.type !== "image" && (
                             <button
