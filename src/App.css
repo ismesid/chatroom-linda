@@ -1606,3 +1606,120 @@ input {
 .message-form textarea::-webkit-scrollbar-thumb:hover {
   background: rgba(138, 161, 180, 0.55);
 }
+
+/* Strong 3D animation for sent messages */
+
+.message-list {
+  perspective: 1200px;
+  perspective-origin: 50% 70%;
+}
+
+.sent-message-3d .message-card {
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: right bottom;
+  animation: sentMessageDrop3d 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 右側厚度 */
+.sent-message-3d .message-card::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: -12px;
+  width: 12px;
+  height: calc(100% - 12px);
+  background: #1d3d5e;
+  border-radius: 0 14px 14px 0;
+  transform: skewY(45deg);
+  transform-origin: left top;
+  opacity: 0;
+  animation: messageDepthAppear 0.75s ease forwards;
+}
+
+/* 底部厚度 */
+.sent-message-3d .message-card::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: -12px;
+  width: calc(100% - 14px);
+  height: 12px;
+  background: #16324d;
+  border-radius: 0 0 14px 14px;
+  transform: skewX(45deg);
+  transform-origin: left top;
+  opacity: 0;
+  animation: messageDepthAppear 0.75s ease forwards;
+}
+
+@keyframes sentMessageDrop3d {
+  0% {
+    opacity: 0;
+    transform:
+      translate3d(120px, -220px, 180px)
+      rotateX(65deg)
+      rotateY(-55deg)
+      rotateZ(12deg)
+      scale(0.72);
+    filter: blur(2px);
+  }
+
+  45% {
+    opacity: 1;
+    transform:
+      translate3d(14px, 16px, 40px)
+      rotateX(24deg)
+      rotateY(-26deg)
+      rotateZ(4deg)
+      scale(1.08);
+    filter: blur(0);
+  }
+
+  65% {
+    transform:
+      translate3d(-6px, -8px, 18px)
+      rotateX(-10deg)
+      rotateY(10deg)
+      rotateZ(-2deg)
+      scale(0.98);
+  }
+
+  82% {
+    transform:
+      translate3d(2px, 3px, 8px)
+      rotateX(4deg)
+      rotateY(-5deg)
+      rotateZ(1deg)
+      scale(1.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform:
+      translate3d(0, 0, 0)
+      rotateX(0deg)
+      rotateY(0deg)
+      rotateZ(0deg)
+      scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes messageDepthAppear {
+  0% {
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 0.95;
+  }
+
+  80% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}

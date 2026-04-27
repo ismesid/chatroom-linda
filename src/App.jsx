@@ -1828,7 +1828,7 @@ function App() {
                     }
                   }}
                   className={`message-row ${
-                    msg.uid === user.uid ? "my-message-row" : ""
+                    msg.uid === user.uid ? "my-message-row sent-message-3d" : "received-message-3d"
                   } ${
                     messageSearchResults.some((result) => result.id === msg.id)
                       ? "search-matched-message-row"
