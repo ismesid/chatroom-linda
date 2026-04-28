@@ -79,6 +79,97 @@ Do not mention that you are Gemini.
   }
 };
 
+const BOT_UID = "gemini-bot";
+const BOT_NAME = "Gemini Bot";
+
+const isBotMentioned = (text = "") => {
+  return String(text).toLowerCase().includes("@bot");
+};
+
+const cleanBotPrompt = (text = "") => {
+  return String(text).replace(/@bot/gi, "").trim();
+};
+
+const generateGeminiChatReply = async ({ userMessage, roomName, recentMessages }) => {
+  if (!GEMINI_API_KEY) {
+    return "Bot API key is not set. Please add VITE_GEMINI_API_KEY in your .env file.";
+  }
+
+  try {
+    const historyText = recentMessages
+      .slice(-8)
+      .map((msg) => {
+        const sender =
+          msg.uid === BOT_UID || msg.type === "bot"
+            ? BOT_NAME
+            : msg.username || "User";
+
+        const content =
+          msg.type === "image"
+            ? "[Image]"
+            : msg.text || "";
+
+        return `${sender}: ${content}`;
+      })
+      .join("\n");
+
+    const prompt = `
+You are a helpful chatbot inside a class chatroom app.
+
+Chatroom name: ${roomName || "Chatroom"}
+
+Recent conversation:
+${historyText || "No previous messages."}
+
+The user mentioned you with @bot.
+
+User message:
+${userMessage}
+
+Reply naturally and helpfully.
+Use the same language as the user if possible.
+Keep the reply concise unless the user asks for details.
+Do not mention that you are Gemini.
+`;
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Gemini API request failed");
+    }
+
+    const data = await response.json();
+
+    return (
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
+      "I could not generate a response this time."
+    );
+  } catch (error) {
+    console.error("Gemini chat reply failed:", error);
+    return "Sorry, I could not reply right now. Please try again later.";
+  }
+};
+
 const DEFAULT_ROOM = {
   id: DEFAULT_ROOM_ID,
   name: "ALL",
@@ -761,8 +852,53 @@ function App() {
         );
       }, 900);
 
+      const shouldAskBot = isBotMentioned(messageToSend);
+      const botQuestion = cleanBotPrompt(messageToSend);
+
       setMessage("");
       setReplyToMessage(null);
+
+      if (shouldAskBot && botQuestion) {
+        const thinkingMessageRef = await push(messagesRef, {
+          username: BOT_NAME,
+          uid: BOT_UID,
+          type: "bot",
+          text: "Thinking...",
+          roomId: selectedRoomId,
+          replyTo: {
+            id: newMessageRef.key,
+            uid: user.uid,
+            username: userProfile?.username || user.displayName || user.email,
+            text: messageToSend,
+            type: "text",
+            imageURL: "",
+          },
+          createdAt: serverTimestamp(),
+        });
+
+        const botReply = await generateGeminiChatReply({
+          userMessage: botQuestion,
+          roomName: selectedRoom?.name,
+          recentMessages: [
+            ...visibleMessages,
+            {
+              id: newMessageRef.key,
+              username: userProfile?.username || user.displayName || user.email,
+              uid: user.uid,
+              text: messageToSend,
+              type: "text",
+            },
+          ],
+        });
+
+        await update(
+          ref(database, `roomMessages/${selectedRoomId}/${thinkingMessageRef.key}`),
+          {
+            text: botReply,
+            createdAt: serverTimestamp(),
+          }
+        );
+      }
     } catch (error) {
       console.error("Send message failed:", error);
       alert("Send failed: " + error.message);
@@ -1122,7 +1258,7 @@ function App() {
 
     waitUntilVisibleThenFlash();
   };
-  
+
   const getReactionList = (msg) => {
     if (!msg.reactions) return [];
 
