@@ -100,6 +100,10 @@ function App() {
 
   const [openEmojiMessageId, setOpenEmojiMessageId] = useState(null);
 
+  const [replyToMessage, setReplyToMessage] = useState(null);
+  const [highlightedReplyMessageId, setHighlightedReplyMessageId] = useState(null);
+  const [animatedMessageId, setAnimatedMessageId] = useState(null);
+
   const emojiGroups = [
     {
       title: "Popular",
@@ -651,6 +655,8 @@ function App() {
     await signOut(auth);
     setMessage("");
     setMessages([]);
+    setReplyToMessage(null);
+    setHighlightedReplyMessageId(null);
     setEditingMessageId(null);
     setEditingText("");
     setIsMenuOpen(false);
@@ -660,6 +666,8 @@ function App() {
   const handleSelectRoom = (roomId) => {
     setSelectedRoomId(roomId);
     setMessage("");
+    setReplyToMessage(null);
+    setHighlightedReplyMessageId(null);
     setEditingMessageId(null);
     setEditingText("");
     setIsMessageSearchOpen(false);
@@ -727,15 +735,34 @@ function App() {
     const messagesRef = ref(database, `roomMessages/${selectedRoomId}`);
 
     try {
-      await push(messagesRef, {
+      const newMessageRef = await push(messagesRef, {
         username: userProfile?.username || user.displayName || user.email,
         uid: user.uid,
         text: messageToSend,
         roomId: selectedRoomId,
+        replyTo: replyToMessage
+          ? {
+              id: replyToMessage.id,
+              uid: replyToMessage.uid,
+              username: replyToMessage.username,
+              text: replyToMessage.text,
+              type: replyToMessage.type,
+              imageURL: replyToMessage.imageURL || "",
+            }
+          : null,
         createdAt: serverTimestamp(),
       });
 
+      setAnimatedMessageId(newMessageRef.key);
+
+      setTimeout(() => {
+        setAnimatedMessageId((currentId) =>
+          currentId === newMessageRef.key ? null : currentId
+        );
+      }, 900);
+
       setMessage("");
+      setReplyToMessage(null);
     } catch (error) {
       console.error("Send message failed:", error);
       alert("Send failed: " + error.message);
@@ -786,15 +813,35 @@ function App() {
         const imageURL = reader.result;
         const messagesRef = ref(database, `roomMessages/${selectedRoomId}`);
 
-        await push(messagesRef, {
+        const newMessageRef = await push(messagesRef, {
           username: userProfile?.username || user.displayName || user.email,
           uid: user.uid,
           type: "image",
           imageURL,
           text: "",
           roomId: selectedRoomId,
+          replyTo: replyToMessage
+            ? {
+                id: replyToMessage.id,
+                uid: replyToMessage.uid,
+                username: replyToMessage.username,
+                text: replyToMessage.text,
+                type: replyToMessage.type,
+                imageURL: replyToMessage.imageURL || "",
+              }
+            : null,
           createdAt: serverTimestamp(),
         });
+
+        setAnimatedMessageId(newMessageRef.key);
+
+        setTimeout(() => {
+          setAnimatedMessageId((currentId) =>
+            currentId === newMessageRef.key ? null : currentId
+          );
+        }, 900);
+
+        setReplyToMessage(null);
 
         const snapshot = await get(messagesRef);
         const data = snapshot.val() || {};
@@ -963,6 +1010,78 @@ function App() {
       console.error("Toggle reaction failed:", error);
       alert("Reaction failed: " + error.message);
     }
+  };
+
+  const getMessagePreviewText = (msg) => {
+    if (!msg) return "";
+
+    if (msg.type === "image") {
+      return "[Image]";
+    }
+
+    if (msg.type === "system") {
+      return msg.text || "[System message]";
+    }
+
+    return msg.text || "";
+  };
+
+  const getMessageSenderName = (msg) => {
+    if (!msg) return "Unknown";
+
+    if (msg.type === "bot" || msg.uid === "chatgpt-bot" || msg.uid === "gemini-bot") {
+      return "Gemini Bot";
+    }
+
+    return userProfiles[msg.uid]?.username || msg.username || "User";
+  };
+
+  const handleStartReplyMessage = (msg) => {
+    if (msg.type === "system") {
+      return;
+    }
+
+    setReplyToMessage({
+      id: msg.id,
+      uid: msg.uid,
+      username: getMessageSenderName(msg),
+      text: getMessagePreviewText(msg),
+      type: msg.type || "text",
+      imageURL: msg.imageURL || "",
+    });
+
+    setTimeout(() => {
+      const textarea = document.querySelector(".message-form textarea");
+      textarea?.focus();
+    }, 0);
+  };
+
+  const handleCancelReplyMessage = () => {
+    setReplyToMessage(null);
+  };
+
+  const handleJumpToReplyMessage = (messageId) => {
+    if (!messageId) return;
+
+    const targetElement = messageRefs.current[messageId];
+
+    if (!targetElement) {
+      alert("Original message is not available.");
+      return;
+    }
+
+    targetElement.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    setHighlightedReplyMessageId(messageId);
+
+    setTimeout(() => {
+      setHighlightedReplyMessageId((currentId) =>
+        currentId === messageId ? null : currentId
+      );
+    }, 1600);
   };
 
   const getReactionList = (msg) => {
@@ -1889,7 +2008,7 @@ function App() {
                   }}
                   className={`message-row ${
                     msg.uid === user.uid && msg.type !== "bot"
-                      ? "my-message-row sent-message-3d"
+                      ? `my-message-row ${animatedMessageId === msg.id ? "sent-message-3d" : ""}`
                       : "received-message-3d"
                   } ${
                     messageSearchResults.some((result) => result.id === msg.id)
@@ -1897,6 +2016,8 @@ function App() {
                       : ""
                   } ${
                     activeSearchMessageId === msg.id ? "active-search-message-row" : ""
+                  } ${
+                    highlightedReplyMessageId === msg.id ? "reply-highlight-message-row" : ""
                   }`}
                   key={msg.id}
                 >
@@ -1924,6 +2045,16 @@ function App() {
                     </span>
 
                     <div className="message-actions">
+                      {msg.type !== "system" && (
+                        <button
+                          className="mini-action-button"
+                          type="button"
+                          onClick={() => handleStartReplyMessage(msg)}
+                        >
+                          Reply
+                        </button>
+                      )}
+
                       {msg.type !== "system" && (
                         <div className="emoji-action-wrapper">
                           <button
@@ -2006,6 +2137,25 @@ function App() {
                     </div>
                   </div>
 
+                  {msg.replyTo && (
+                    <button
+                      type="button"
+                      className="reply-reference"
+                      onClick={() => handleJumpToReplyMessage(msg.replyTo.id)}
+                    >
+                      <span className="reply-reference-line" />
+
+                      <span className="reply-reference-content">
+                        <strong>{msg.replyTo.username || "User"}</strong>
+                        <span>
+                          {msg.replyTo.type === "image"
+                            ? "[Image]"
+                            : msg.replyTo.text || "[Message]"}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+
                   {editingMessageId === msg.id ? (
                     <form
                       className="edit-message-form"
@@ -2087,50 +2237,77 @@ function App() {
 
         </section>
 
-        <form className="message-form" onSubmit={handleSendMessage}>
-          <button
-            className="attach-button"
-            type="button"
-            onClick={() => imageInputRef.current?.click()}
-            disabled={isTwoPersonBlockedRoom}
-          >
-            📎
-          </button>
+        <div className="composer-area">
+          {replyToMessage && (
+            <div className="reply-composer-preview">
+              <div className="reply-composer-line" />
 
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            className="image-file-input"
-            onChange={handleSendImageMessage}
-          />
+              <div className="reply-composer-content">
+                <strong>Replying to {replyToMessage.username}</strong>
+                <span>
+                  {replyToMessage.type === "image"
+                    ? "[Image]"
+                    : replyToMessage.text || "[Message]"}
+                </span>
+              </div>
 
-          <textarea
-            placeholder={
-              isTwoPersonBlockedRoom
-                ? "You can no longer chat with this user."
-                : `Write a message to ${selectedRoom?.name || "this room"}...`
-            }
-            value={message}
-            disabled={isTwoPersonBlockedRoom}
-            rows={1}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                e.currentTarget.form.requestSubmit();
+              <button
+                type="button"
+                className="reply-cancel-button"
+                onClick={handleCancelReplyMessage}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          <form className="message-form" onSubmit={handleSendMessage}>
+            <button
+              className="attach-button"
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={isTwoPersonBlockedRoom}
+            >
+              📎
+            </button>
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="image-file-input"
+              onChange={handleSendImageMessage}
+            />
+
+            <textarea
+              placeholder={
+                isTwoPersonBlockedRoom
+                  ? "You can no longer chat with this user."
+                  : `Write a message to ${selectedRoom?.name || "this room"}...`
               }
-            }}
-          />
+              value={message}
+              disabled={isTwoPersonBlockedRoom}
+              rows={1}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form.requestSubmit();
+                }
+              }}
+            />
 
-          <button
-            type="submit"
-            className="send-button"
-            disabled={isTwoPersonBlockedRoom}
-          >
-            Send
-          </button>
-        </form>
+            <button
+              type="submit"
+              className="send-button"
+              disabled={isTwoPersonBlockedRoom}
+            >
+              Send
+            </button>
+          </form>
+        </div>
+
+        
       </main>
     </div>
   );
