@@ -103,20 +103,9 @@ function App() {
   const emojiGroups = [
     {
       title: "Popular",
-      emojis: ["❤️", "😂", "👍", "😭", "😍", "😮", "😡", "👏", "🔥", "🎉"],
+      emojis: ["❤️", "😂", "👍", "😭", "😮", "😡", "👏"],
     },
-    {
-      title: "Faces",
-      emojis: ["😀", "😁", "🤣", "😊", "🥰", "😘", "😎", "😐", "😅", "😇", "😴", "🤔"],
-    },
-    {
-      title: "Gestures",
-      emojis: ["👍", "👎", "👌", "🙏", "👏", "🙌", "🤝", "💪", "👀", "🤌"],
-    },
-    {
-      title: "Symbols",
-      emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "⭐", "✨", "💯", "✅"],
-    },
+    
   ];
 
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
