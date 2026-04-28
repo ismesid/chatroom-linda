@@ -98,6 +98,27 @@ function App() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState("");
 
+  const [openEmojiMessageId, setOpenEmojiMessageId] = useState(null);
+
+  const emojiGroups = [
+    {
+      title: "Popular",
+      emojis: ["❤️", "😂", "👍", "😭", "😍", "😮", "😡", "👏", "🔥", "🎉"],
+    },
+    {
+      title: "Faces",
+      emojis: ["😀", "😁", "🤣", "😊", "🥰", "😘", "😎", "😐", "😅", "😇", "😴", "🤔"],
+    },
+    {
+      title: "Gestures",
+      emojis: ["👍", "👎", "👌", "🙏", "👏", "🙌", "🤝", "💪", "👀", "🤌"],
+    },
+    {
+      title: "Symbols",
+      emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "⭐", "✨", "💯", "✅"],
+    },
+  ];
+
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
   const [messageSearchText, setMessageSearchText] = useState("");
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
@@ -922,6 +943,49 @@ function App() {
       console.error("Delete message failed:", error);
       alert("Delete failed: " + error.message);
     }
+  };
+
+  const handleToggleReaction = async (msg, emoji) => {
+    if (!user) {
+      alert("Please login first.");
+      return;
+    }
+
+    if (!selectedRoom || !selectedRoom.members?.[user.uid]) {
+      alert("You are not a member of this chatroom.");
+      return;
+    }
+
+    if (msg.type === "system") {
+      return;
+    }
+
+    const hasReacted = msg.reactions?.[emoji]?.[user.uid] === true;
+
+    const reactionPath = `roomMessages/${selectedRoomId}/${msg.id}/reactions/${emoji}/${user.uid}`;
+
+    try {
+      await update(ref(database), {
+        [reactionPath]: hasReacted ? null : true,
+      });
+
+      setOpenEmojiMessageId(null);
+    } catch (error) {
+      console.error("Toggle reaction failed:", error);
+      alert("Reaction failed: " + error.message);
+    }
+  };
+
+  const getReactionList = (msg) => {
+    if (!msg.reactions) return [];
+
+    return Object.entries(msg.reactions)
+      .map(([emoji, users]) => ({
+        emoji,
+        count: users ? Object.keys(users).length : 0,
+        reactedByMe: users?.[user?.uid] === true,
+      }))
+      .filter((reaction) => reaction.count > 0);
   };
 
   const handleCreateGroup = async (e) => {
@@ -1871,6 +1935,54 @@ function App() {
                     </span>
 
                     <div className="message-actions">
+                      {msg.type !== "system" && (
+                        <div className="emoji-action-wrapper">
+                          <button
+                            className="mini-action-button emoji-open-button"
+                            type="button"
+                            onClick={() =>
+                              setOpenEmojiMessageId(
+                                openEmojiMessageId === msg.id ? null : msg.id
+                              )
+                            }
+                          >
+                            ☺
+                          </button>
+
+                          {openEmojiMessageId === msg.id && (
+                            <div
+                              className={`emoji-picker-floating ${
+                                msg.uid === user.uid && msg.type !== "bot"
+                                  ? "emoji-picker-right"
+                                  : "emoji-picker-left"
+                              }`}
+                            >
+                              {emojiGroups.map((group) => (
+                                <div className="emoji-group" key={group.title}>
+                                  <p className="emoji-group-title">{group.title}</p>
+
+                                  <div className="emoji-group-list">
+                                    {group.emojis.map((emoji) => (
+                                      <button
+                                        key={`${group.title}-${emoji}`}
+                                        type="button"
+                                        className={`emoji-picker-button ${
+                                          msg.reactions?.[emoji]?.[user.uid] ? "active" : ""
+                                        }`}
+                                        onClick={() => handleToggleReaction(msg, emoji)}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+
                       {msg.uid !== user.uid &&
                         msg.type !== "bot" &&
                         msg.uid !== "chatgpt-bot" &&
@@ -1952,6 +2064,24 @@ function App() {
                       {msg.text}
                       {msg.edited && <span className="edited-label"> edited</span>}
                     </p>
+                  )}
+
+                  {getReactionList(msg).length > 0 && (
+                    <div className="message-reactions">
+                      {getReactionList(msg).map((reaction) => (
+                        <button
+                          key={reaction.emoji}
+                          type="button"
+                          className={`reaction-chip ${
+                            reaction.reactedByMe ? "my-reaction" : ""
+                          }`}
+                          onClick={() => handleToggleReaction(msg, reaction.emoji)}
+                        >
+                          <span>{reaction.emoji}</span>
+                          <span>{reaction.count}</span>
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
