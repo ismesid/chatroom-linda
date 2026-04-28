@@ -1070,20 +1070,59 @@ function App() {
       return;
     }
 
+    const isTargetVisibleInMessageList = () => {
+      const messageList = messageListRef.current;
+
+      if (!messageList) return true;
+
+      const targetRect = targetElement.getBoundingClientRect();
+      const listRect = messageList.getBoundingClientRect();
+
+      const targetCenter = targetRect.top + targetRect.height / 2;
+
+      return (
+        targetCenter >= listRect.top + 80 &&
+        targetCenter <= listRect.bottom - 80
+      );
+    };
+
+    const flashTargetMessage = () => {
+      setHighlightedReplyMessageId(null);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setHighlightedReplyMessageId(messageId);
+
+          setTimeout(() => {
+            setHighlightedReplyMessageId((currentId) =>
+              currentId === messageId ? null : currentId
+            );
+          }, 1600);
+        });
+      });
+    };
+
+    const waitUntilVisibleThenFlash = (startTime = performance.now()) => {
+      const hasWaitedTooLong = performance.now() - startTime > 3000;
+
+      if (isTargetVisibleInMessageList() || hasWaitedTooLong) {
+        flashTargetMessage();
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        waitUntilVisibleThenFlash(startTime);
+      });
+    };
+
     targetElement.scrollIntoView({
       behavior: "smooth",
       block: "center",
     });
 
-    setHighlightedReplyMessageId(messageId);
-
-    setTimeout(() => {
-      setHighlightedReplyMessageId((currentId) =>
-        currentId === messageId ? null : currentId
-      );
-    }, 1600);
+    waitUntilVisibleThenFlash();
   };
-
+  
   const getReactionList = (msg) => {
     if (!msg.reactions) return [];
 
