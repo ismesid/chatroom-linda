@@ -1765,18 +1765,23 @@ input {
 }
 
 .emoji-picker-floating {
-  position: absolute;
-  top: 38px;
+  position: fixed;
   z-index: 300;
   width: auto;
-  max-width: none;
+  max-width: min(360px, calc(100vw - 32px));
   max-height: none;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
   padding: 10px 12px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.98);
   border: 1px solid rgba(148, 163, 184, 0.3);
   box-shadow: 0 14px 45px rgba(0, 0, 0, 0.45);
+  scrollbar-width: none;
+}
+
+.emoji-picker-floating::-webkit-scrollbar {
+  display: none;
 }
 
 .emoji-picker-right {
@@ -1784,7 +1789,7 @@ input {
 }
 
 .emoji-picker-left {
-  left: 0;
+  right: 0;
 }
 
 .emoji-group {

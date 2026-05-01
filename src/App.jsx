@@ -190,6 +190,7 @@ function App() {
   const [editingText, setEditingText] = useState("");
 
   const [openEmojiMessageId, setOpenEmojiMessageId] = useState(null);
+  const [emojiPickerPosition, setEmojiPickerPosition] = useState(null);
 
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [highlightedReplyMessageId, setHighlightedReplyMessageId] = useState(null);
@@ -543,6 +544,10 @@ function App() {
 
     return !isBlockedBetween(user.uid, msg.uid);
   });
+
+  const openEmojiMessage = visibleMessages.find(
+    (msg) => msg.id === openEmojiMessageId
+  );
 
   const normalizedMessageSearchText = messageSearchText.trim().toLowerCase();
 
@@ -1159,10 +1164,32 @@ function App() {
       await update(ref(database), updates);
 
       setOpenEmojiMessageId(null);
+      setEmojiPickerPosition(null);
     } catch (error) {
       console.error("Toggle reaction failed:", error);
       alert("Reaction failed: " + error.message);
     }
+  };
+
+  const handleToggleEmojiPicker = (msgId, event) => {
+    if (openEmojiMessageId === msgId) {
+      setOpenEmojiMessageId(null);
+      setEmojiPickerPosition(null);
+      return;
+    }
+
+    const buttonRect = event.currentTarget.getBoundingClientRect();
+    const pickerWidth = Math.min(360, window.innerWidth - 32);
+    const left = Math.min(
+      Math.max(buttonRect.left + buttonRect.width / 2 - pickerWidth / 2, 16),
+      window.innerWidth - pickerWidth - 16
+    );
+
+    setEmojiPickerPosition({
+      left,
+      top: buttonRect.bottom + 8,
+    });
+    setOpenEmojiMessageId(msgId);
   };
 
   const getMessagePreviewText = (msg) => {
@@ -2296,45 +2323,11 @@ function App() {
                           <button
                             className="mini-action-button emoji-open-button"
                             type="button"
-                            onClick={() =>
-                              setOpenEmojiMessageId(
-                                openEmojiMessageId === msg.id ? null : msg.id
-                              )
-                            }
+                            onClick={(event) => handleToggleEmojiPicker(msg.id, event)}
                           >
                             ☺
                           </button>
 
-                          {openEmojiMessageId === msg.id && (
-                            <div
-                              className={`emoji-picker-floating ${
-                                msg.uid === user.uid && msg.type !== "bot"
-                                  ? "emoji-picker-right"
-                                  : "emoji-picker-left"
-                              }`}
-                            >
-                              {emojiGroups.map((group) => (
-                                <div className="emoji-group" key={group.title}>
-                                  <p className="emoji-group-title">{group.title}</p>
-
-                                  <div className="emoji-group-list">
-                                    {group.emojis.map((emoji) => (
-                                      <button
-                                        key={`${group.title}-${emoji}`}
-                                        type="button"
-                                        className={`emoji-picker-button ${
-                                          hasReactedToMessage(msg, emoji) ? "active" : ""
-                                        }`}
-                                        onClick={() => handleToggleReaction(msg, emoji)}
-                                      >
-                                        {emoji}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       )}
                       
@@ -2545,6 +2538,34 @@ function App() {
 
         
       </main>
+
+      {openEmojiMessage && emojiPickerPosition && (
+        <div
+          className="emoji-picker-floating"
+          style={emojiPickerPosition}
+        >
+          {emojiGroups.map((group) => (
+            <div className="emoji-group" key={group.title}>
+              <p className="emoji-group-title">{group.title}</p>
+
+              <div className="emoji-group-list">
+                {group.emojis.map((emoji) => (
+                  <button
+                    key={`${group.title}-${emoji}`}
+                    type="button"
+                    className={`emoji-picker-button ${
+                      hasReactedToMessage(openEmojiMessage, emoji) ? "active" : ""
+                    }`}
+                    onClick={() => handleToggleReaction(openEmojiMessage, emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
