@@ -248,20 +248,26 @@ function App() {
   const ensureDefaultRoomForUser = async (currentUser, shouldWelcome = false) => {
     if (!currentUser) return;
 
+    const userRef = ref(database, `users/${currentUser.uid}`);
+    const userSnapshot = await get(userRef);
+    const existingProfile = userSnapshot.val();
     const defaultUsername = currentUser.displayName || currentUser.email || "";
-    const latestPhotoURL = currentUser.photoURL || "";
-    const latestUsername = defaultUsername || "User";
+    const latestPhotoURL = existingProfile?.photoURL || currentUser.photoURL || "";
+    const latestUsername = existingProfile?.username || defaultUsername || "User";
 
     // 第一階段：先保證 ALL 群組一定建立成功
     await update(ref(database), {
-      [`users/${currentUser.uid}/email`]: currentUser.email || "",
+      [`users/${currentUser.uid}/email`]: existingProfile?.email || currentUser.email || "",
       [`users/${currentUser.uid}/username`]: latestUsername,
       [`users/${currentUser.uid}/photoURL`]: latestPhotoURL,
+      [`users/${currentUser.uid}/phone`]: existingProfile?.phone || "",
+      [`users/${currentUser.uid}/address`]: existingProfile?.address || "",
       [`users/${currentUser.uid}/updatedAt`]: serverTimestamp(),
 
       [`publicProfiles/${currentUser.uid}/photoURL`]: latestPhotoURL,
       [`publicProfiles/${currentUser.uid}/username`]: latestUsername,
-      [`publicProfiles/${currentUser.uid}/email`]: currentUser.email || "",
+      [`publicProfiles/${currentUser.uid}/email`]:
+        existingProfile?.email || currentUser.email || "",
 
       [`rooms/${DEFAULT_ROOM_ID}/name`]: DEFAULT_ROOM.name,
       [`rooms/${DEFAULT_ROOM_ID}/description`]: DEFAULT_ROOM.description,

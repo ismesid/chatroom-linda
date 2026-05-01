@@ -620,6 +620,7 @@ input {
   width: 390px;
   max-width: 86vw;
   height: 100vh;
+  max-height: 100vh;
   background: #17212b;
   border-right: 1px solid #0b1118;
   transform: translateX(-105%);
@@ -627,6 +628,8 @@ input {
   z-index: 40;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 20px 0 70px rgba(0, 0, 0, 0.4);
 }
 
@@ -641,6 +644,7 @@ input {
   align-items: center;
   gap: 16px;
   color: #f8fafc;
+  flex-shrink: 0;
 }
 
 .profile-avatar {
@@ -674,6 +678,7 @@ input {
   font-size: 19px;
   font-weight: 700;
   text-align: left;
+  flex-shrink: 0;
 }
 
 .menu-item:hover {
@@ -696,6 +701,7 @@ input {
   border-radius: 16px;
   background: #0e1621;
   border: 1px solid #253341;
+  flex-shrink: 0;
 }
 
 .drawer-panel h3 {
@@ -769,6 +775,7 @@ input {
   padding: 24px 28px;
   color: #8aa1b4;
   font-size: 15px;
+  flex-shrink: 0;
 }
 
 /* Tablet */
