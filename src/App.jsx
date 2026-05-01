@@ -239,6 +239,11 @@ function App() {
   const messageEndRef = useRef(null);
   const messageRefs = useRef({});
   const imageInputRef = useRef(null);
+  const selectedRoomIdRef = useRef("");
+
+  useEffect(() => {
+    selectedRoomIdRef.current = selectedRoomId;
+  }, [selectedRoomId]);
 
   const ensureDefaultRoomForUser = async (currentUser, shouldWelcome = false) => {
     if (!currentUser) return;
@@ -404,7 +409,7 @@ function App() {
 
       setRooms(loadedRooms);
 
-      if (!selectedRoomId && loadedRooms.length > 0) {
+      if (!selectedRoomIdRef.current && loadedRooms.length > 0) {
         const defaultRoom =
           loadedRooms.find((room) => room.id === DEFAULT_ROOM_ID) || loadedRooms[0];
 
@@ -1289,20 +1294,20 @@ function App() {
     const newRoomRef = push(ref(database, "rooms"));
     const newRoomId = newRoomRef.key;
 
-    const newRoom = {
-      name: trimmedName,
-      description: "New group",
-      avatar: trimmedName[0].toUpperCase(),
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      members: {
-        [user.uid]: true,
-      },
-    };
+    let createdMemberClaim = false;
 
     try {
+      // Current database rules require membership to exist before room metadata
+      // and userRooms can be written.
+      await set(ref(database, `rooms/${newRoomId}/members/${user.uid}`), true);
+      createdMemberClaim = true;
+
       const updates = {
-        [`rooms/${newRoomId}`]: newRoom,
+        [`rooms/${newRoomId}/name`]: trimmedName,
+        [`rooms/${newRoomId}/description`]: "New group",
+        [`rooms/${newRoomId}/avatar`]: trimmedName[0].toUpperCase(),
+        [`rooms/${newRoomId}/createdBy`]: user.uid,
+        [`rooms/${newRoomId}/createdAt`]: serverTimestamp(),
         [`userRooms/${user.uid}/${newRoomId}`]: true,
       };
 
@@ -1314,6 +1319,14 @@ function App() {
       setIsMenuOpen(false);
       setIsMobileChatOpen(true);
     } catch (error) {
+      if (createdMemberClaim) {
+        try {
+          await remove(ref(database, `rooms/${newRoomId}/members/${user.uid}`));
+        } catch (cleanupError) {
+          console.error("Create group cleanup failed:", cleanupError);
+        }
+      }
+
       console.error("Create group failed:", error);
       alert("Create group failed: " + error.message);
     }
