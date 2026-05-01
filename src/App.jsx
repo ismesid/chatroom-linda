@@ -1143,14 +1143,20 @@ function App() {
       return;
     }
 
-    const hasReacted = msg.reactions?.[emoji]?.[user.uid] === true;
+    const roomId = msg.roomId || selectedRoomId;
+    const hasReacted = hasReactedToMessage(msg, emoji);
+    const reactionPath = `publicProfiles/${user.uid}/messageReactions/${roomId}/${msg.id}/${emoji}`;
+    const updates = {
+      [reactionPath]: hasReacted ? null : true,
+    };
 
-    const reactionPath = `roomMessages/${selectedRoomId}/${msg.id}/reactions/${emoji}/${user.uid}`;
+    if (hasReacted && msg.uid === user.uid && msg.reactions?.[emoji]?.[user.uid]) {
+      updates[`roomMessages/${selectedRoomId}/${msg.id}/reactions/${emoji}/${user.uid}`] =
+        null;
+    }
 
     try {
-      await update(ref(database), {
-        [reactionPath]: hasReacted ? null : true,
-      });
+      await update(ref(database), updates);
 
       setOpenEmojiMessageId(null);
     } catch (error) {
@@ -1270,13 +1276,49 @@ function App() {
     waitUntilVisibleThenFlash();
   };
 
-  const getReactionList = (msg) => {
-    if (!msg.reactions) return [];
+  const getMessageReactionUsers = (msg) => {
+    const roomId = msg.roomId || selectedRoomId;
+    const reactionUsers = {};
 
-    return Object.entries(msg.reactions)
+    Object.entries(msg.reactions || {}).forEach(([emoji, users]) => {
+      Object.entries(users || {}).forEach(([uid, hasReacted]) => {
+        if (hasReacted !== true) return;
+
+        reactionUsers[emoji] = {
+          ...(reactionUsers[emoji] || {}),
+          [uid]: true,
+        };
+      });
+    });
+
+    Object.entries(userProfiles).forEach(([uid, profile]) => {
+      const profileReactions =
+        profile?.messageReactions?.[roomId]?.[msg.id] || {};
+
+      Object.entries(profileReactions).forEach(([emoji, hasReacted]) => {
+        if (hasReacted !== true) return;
+
+        reactionUsers[emoji] = {
+          ...(reactionUsers[emoji] || {}),
+          [uid]: true,
+        };
+      });
+    });
+
+    return reactionUsers;
+  };
+
+  const hasReactedToMessage = (msg, emoji) => {
+    return getMessageReactionUsers(msg)[emoji]?.[user?.uid] === true;
+  };
+
+  const getReactionList = (msg) => {
+    const reactionUsers = getMessageReactionUsers(msg);
+
+    return Object.entries(reactionUsers)
       .map(([emoji, users]) => ({
         emoji,
-        count: users ? Object.keys(users).length : 0,
+        count: Object.keys(users).length,
         reactedByMe: users?.[user?.uid] === true,
       }))
       .filter((reaction) => reaction.count > 0);
@@ -2281,7 +2323,7 @@ function App() {
                                         key={`${group.title}-${emoji}`}
                                         type="button"
                                         className={`emoji-picker-button ${
-                                          msg.reactions?.[emoji]?.[user.uid] ? "active" : ""
+                                          hasReactedToMessage(msg, emoji) ? "active" : ""
                                         }`}
                                         onClick={() => handleToggleReaction(msg, emoji)}
                                       >
